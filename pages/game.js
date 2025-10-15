@@ -27,48 +27,85 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
         mieDirectionalG={0.8}
       />
       
-      {/* Simple Stable Floor */}
+      {/* Finite Garden Floor */}
+      <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[50, 50]} />
+        <meshLambertMaterial color="#f0f8f0" />
+      </mesh>
+      
+      {/* Garden Fences */}
+      {/* North Fence - Connected Poles and Planks */}
+      {Array.from({ length: 25 }, (_, i) => (
+        <mesh key={`north-pole-${i}`} position={[-24 + i * 2, 0.5, 25]}>
+          <boxGeometry args={[0.2, 1, 0.2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      {Array.from({ length: 24 }, (_, i) => (
+        <mesh key={`north-plank-${i}`} position={[-24 + i * 2 + 1, 0.7, 25]}>
+          <boxGeometry args={[2, 0.2, 0.1]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      
+      {/* South Fence */}
+      {Array.from({ length: 25 }, (_, i) => (
+        <mesh key={`south-pole-${i}`} position={[-24 + i * 2, 0.5, -25]}>
+          <boxGeometry args={[0.2, 1, 0.2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      {Array.from({ length: 24 }, (_, i) => (
+        <mesh key={`south-plank-${i}`} position={[-24 + i * 2 + 1, 0.7, -25]}>
+          <boxGeometry args={[2, 0.2, 0.1]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      
+      {/* East Fence */}
+      {Array.from({ length: 25 }, (_, i) => (
+        <mesh key={`east-pole-${i}`} position={[25, 0.5, -24 + i * 2]}>
+          <boxGeometry args={[0.2, 1, 0.2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      {Array.from({ length: 24 }, (_, i) => (
+        <mesh key={`east-plank-${i}`} position={[25, 0.7, -24 + i * 2 + 1]}>
+          <boxGeometry args={[0.1, 0.2, 2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      
+      {/* West Fence */}
+      {Array.from({ length: 25 }, (_, i) => (
+        <mesh key={`west-pole-${i}`} position={[-25, 0.5, -24 + i * 2]}>
+          <boxGeometry args={[0.2, 1, 0.2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      {Array.from({ length: 24 }, (_, i) => (
+        <mesh key={`west-plank-${i}`} position={[-25, 0.7, -24 + i * 2 + 1]}>
+          <boxGeometry args={[0.1, 0.2, 2]} />
+          <meshLambertMaterial color="#8B4513" />
+        </mesh>
+      ))}
+      
+      {/* Grid Overlay */}
       <Grid
         renderOrder={-1}
-        position={[0, -0.01, 0]}
-        infiniteGrid
+        position={[0, -0.005, 0]}
+        infiniteGrid={false}
         cellSize={0.5}
-        cellThickness={0.3}
-        cellColor="#f0f8f0"
+        cellThickness={0.2}
+        cellColor="#e0e0e0"
         sectionSize={5}
         sectionThickness={0.8}
         sectionColor="#333333"
-        fadeDistance={100}
+        fadeDistance={25}
         fadeStrength={0.3}
         followCamera={false}
         followCameraSpeed={0.01}
       />
-      
-      {/* Wooden Planks */}
-      <mesh position={[0, 0.1, 0]}>
-        <boxGeometry args={[8, 0.2, 1]} />
-        <meshLambertMaterial color="#8B4513" />
-      </mesh>
-      
-      <mesh position={[0, 0.1, 5]}>
-        <boxGeometry args={[6, 0.2, 1]} />
-        <meshLambertMaterial color="#8B4513" />
-      </mesh>
-      
-      <mesh position={[5, 0.1, 0]}>
-        <boxGeometry args={[1, 0.2, 8]} />
-        <meshLambertMaterial color="#8B4513" />
-      </mesh>
-      
-      <mesh position={[-3, 0.1, -2]}>
-        <boxGeometry args={[4, 0.2, 1]} />
-        <meshLambertMaterial color="#8B4513" />
-      </mesh>
-      
-      <mesh position={[2, 0.1, -4]}>
-        <boxGeometry args={[1, 0.2, 3]} />
-        <meshLambertMaterial color="#8B4513" />
-      </mesh>
 
       {/* Character */}
       <Character position={characterPosition} rotation={characterRotation} isWalking={isWalking} />
@@ -130,11 +167,12 @@ export default function Game() {
     };
   }, []);
 
-  // Smooth movement loop
+  // Smooth movement loop with boundary collision
   useEffect(() => {
     const moveInterval = setInterval(() => {
       const speed = 0.1;
       const rotationSpeed = 0.05;
+      const gardenSize = 24; // Garden boundary (25 - 1 for safety)
       
       // Check if character is moving
       const isMoving = keys.w || keys.s || keys.a || keys.d;
@@ -161,6 +199,10 @@ export default function Game() {
           newX -= Math.cos(characterRotation) * speed;
           newZ += Math.sin(characterRotation) * speed;
         }
+        
+        // Boundary collision - keep character inside garden
+        newX = Math.max(-gardenSize, Math.min(gardenSize, newX));
+        newZ = Math.max(-gardenSize, Math.min(gardenSize, newZ));
         
         return [newX, y, newZ];
       });
