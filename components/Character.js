@@ -30,12 +30,12 @@ export default function Character({ position, rotation, isWalking }) {
         <meshLambertMaterial color="#FFEAA7" />
       </mesh>
       
-      {/* Eyes */}
-      <mesh position={[-0.1, 1.3 + bodyBob, 0.2]}>
+      {/* Eyes - Fixed z-fighting */}
+      <mesh position={[-0.1, 1.3 + bodyBob, 0.26]}>
         <boxGeometry args={[0.1, 0.1, 0.1]} />
         <meshLambertMaterial color="#000000" />
       </mesh>
-      <mesh position={[0.1, 1.3 + bodyBob, 0.2]}>
+      <mesh position={[0.1, 1.3 + bodyBob, 0.26]}>
         <boxGeometry args={[0.1, 0.1, 0.1]} />
         <meshLambertMaterial color="#000000" />
       </mesh>

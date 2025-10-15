@@ -13,6 +13,7 @@ import Character from "../components/Character";
 import CameraController from "../components/CameraController";
 import GrassField from "../components/GrassField";
 import Shop from "../components/Shop";
+import Shop2 from "../components/Shop2";
 
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
@@ -107,8 +108,8 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
       />
 
       {/* Shops */}
-      <Shop position={[20, 0, 0]} />
-      <Shop position={[-20, 0, 0]} />
+      <Shop position={[8, 0, 15]} rotation={[0, Math.PI/2, 0]} />
+      <Shop2 position={[-8, 0, 15]} rotation={[0, Math.PI/2, 0]} />
       
       {/* Character */}
       <Character position={characterPosition} rotation={characterRotation} isWalking={isWalking} />
@@ -203,10 +204,10 @@ export default function Game() {
           newZ += Math.sin(characterRotation) * speed;
         }
         
-        // Shop collision detection for both shops
+        // Shop collision detection for both shops (rotated 90 degrees)
         const shops = [
-          { x: 20, z: 0, width: 6.4, depth: 3.4 },
-          { x: -20, z: 0, width: 6.4, depth: 3.4 }
+          { x: 8, z: 15, width: 3.4, depth: 6.4 }, // Rotated: width/depth swapped
+          { x: -8, z: 15, width: 3.4, depth: 6.4 }
         ];
         
         // Check collision with each shop

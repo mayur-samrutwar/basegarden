@@ -1,4 +1,4 @@
-export default function Shop({ position = [0, 0, 0] }) {
+export default function Shop2({ position = [0, 0, 0] }) {
   return (
     <group position={position}>
       {/* 4 Supporting Poles - Moderately Tall */}
@@ -50,12 +50,12 @@ export default function Shop({ position = [0, 0, 0] }) {
         <meshLambertMaterial color="#FFFFFF" />
       </mesh>
       
-      {/* Seller Character - Different dress and facing direction */}
+      {/* Seller Character 2 - Different dress and facing direction */}
       <group position={[0, 0.85, 0.5]} rotation={[0, Math.PI, 0]}>
-        {/* Body - Different color dress */}
+        {/* Body - Blue dress */}
         <mesh position={[0, 0.5, 0]}>
           <boxGeometry args={[0.6, 1, 0.3]} />
-          <meshLambertMaterial color="#8B4513" />
+          <meshLambertMaterial color="#4169E1" />
         </mesh>
         
         {/* Head */}
@@ -86,16 +86,16 @@ export default function Shop({ position = [0, 0, 0] }) {
           <meshLambertMaterial color="#FFEAA7" />
         </mesh>
         
-        {/* Left Leg - Different color pants */}
-        <mesh position={[-0.15, -0.2, 0]}>
+        {/* Left Leg - Black pants */}
+        <mesh position={[-0.2, -0.2, 0]}>
           <boxGeometry args={[0.2, 0.6, 0.2]} />
-          <meshLambertMaterial color="#654321" />
+          <meshLambertMaterial color="#000000" />
         </mesh>
         
-        {/* Right Leg - Different color pants */}
-        <mesh position={[0.15, -0.2, 0]}>
+        {/* Right Leg - Black pants */}
+        <mesh position={[0.2, -0.2, 0]}>
           <boxGeometry args={[0.2, 0.6, 0.2]} />
-          <meshLambertMaterial color="#654321" />
+          <meshLambertMaterial color="#000000" />
         </mesh>
       </group>
       
