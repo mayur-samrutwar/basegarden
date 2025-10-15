@@ -171,10 +171,10 @@ export default function Game() {
     };
   }, []);
 
-  // Smooth movement loop with boundary collision
+  // Smoother movement loop with reduced frequency
   useEffect(() => {
     const moveInterval = setInterval(() => {
-      const speed = 0.1;
+      const speed = 0.08; // Reduced speed for smoother movement
       const rotationSpeed = 0.05;
       const gardenSize = 24; // Garden boundary (25 - 1 for safety)
       
@@ -187,22 +187,17 @@ export default function Game() {
         let newX = x;
         let newZ = z;
         
-        if (keys.w) {
-          newX += Math.sin(characterRotation) * speed;
-          newZ += Math.cos(characterRotation) * speed;
-        }
-        if (keys.s) {
-          newX -= Math.sin(characterRotation) * speed;
-          newZ -= Math.cos(characterRotation) * speed;
-        }
-        if (keys.a) {
-          newX += Math.cos(characterRotation) * speed;
-          newZ -= Math.sin(characterRotation) * speed;
-        }
-        if (keys.d) {
-          newX -= Math.cos(characterRotation) * speed;
-          newZ += Math.sin(characterRotation) * speed;
-        }
+        // Normalize diagonal movement to prevent double speed
+        const moveX = (keys.d ? -1 : 0) + (keys.a ? 1 : 0);
+        const moveZ = (keys.w ? 1 : 0) + (keys.s ? -1 : 0);
+        
+        // Apply movement with normalization for diagonal
+        const moveLength = Math.sqrt(moveX * moveX + moveZ * moveZ);
+        const normalizedX = moveLength > 0 ? moveX / moveLength : 0;
+        const normalizedZ = moveLength > 0 ? moveZ / moveLength : 0;
+        
+        newX += (normalizedX * Math.cos(characterRotation) + normalizedZ * Math.sin(characterRotation)) * speed;
+        newZ += (normalizedZ * Math.cos(characterRotation) - normalizedX * Math.sin(characterRotation)) * speed;
         
         // Shop collision detection for both shops (rotated 90 degrees)
         const shops = [
@@ -236,7 +231,7 @@ export default function Game() {
         if (keys.e) newRotation -= rotationSpeed;
         return newRotation;
       });
-    }, 32); // ~30fps - slower updates
+        }, 16); // ~60fps - back to smooth updates
 
     return () => clearInterval(moveInterval);
   }, [keys, characterRotation]);

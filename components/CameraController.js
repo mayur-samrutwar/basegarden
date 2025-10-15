@@ -21,9 +21,9 @@ export default function CameraController({ characterPosition, characterRotation 
     const targetZ = charZ - Math.cos(characterRotation) * distance;
     const targetY = charY + height;
     
-    // Smooth camera movement with delta time
+    // Much smoother camera movement - reduced lerp factor
     const current = cameraRef.current;
-    const lerpFactor = Math.min(delta * 2, 0.1); // Much smoother interpolation
+    const lerpFactor = Math.min(delta * 1.5, 0.08); // Balanced interpolation
     
     current.currentPosition[0] += (targetX - current.currentPosition[0]) * lerpFactor;
     current.currentPosition[1] += (targetY - current.currentPosition[1]) * lerpFactor;
