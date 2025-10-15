@@ -12,6 +12,7 @@ import { Sky, Grid } from "@react-three/drei";
 import Character from "../components/Character";
 import CameraController from "../components/CameraController";
 import GrassField from "../components/GrassField";
+import Shop from "../components/Shop";
 
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
@@ -105,6 +106,10 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
         followCameraSpeed={0.01}
       />
 
+      {/* Shops */}
+      <Shop position={[20, 0, 0]} />
+      <Shop position={[-20, 0, 0]} />
+      
       {/* Character */}
       <Character position={characterPosition} rotation={characterRotation} isWalking={isWalking} />
       
@@ -196,6 +201,25 @@ export default function Game() {
         if (keys.d) {
           newX -= Math.cos(characterRotation) * speed;
           newZ += Math.sin(characterRotation) * speed;
+        }
+        
+        // Shop collision detection for both shops
+        const shops = [
+          { x: 20, z: 0, width: 6.4, depth: 3.4 },
+          { x: -20, z: 0, width: 6.4, depth: 3.4 }
+        ];
+        
+        // Check collision with each shop
+        for (const shop of shops) {
+          const insideShopX = newX >= shop.x - shop.width/2 && newX <= shop.x + shop.width/2;
+          const insideShopZ = newZ >= shop.z - shop.depth/2 && newZ <= shop.z + shop.depth/2;
+          
+          if (insideShopX && insideShopZ) {
+            // Character is inside shop, revert to previous position
+            newX = x;
+            newZ = z;
+            break;
+          }
         }
         
         // Boundary collision - keep character inside garden

@@ -60,7 +60,7 @@ export default function Character({ position, rotation, isWalking }) {
       
       {/* Left Leg */}
       <mesh 
-        position={[-0.15, -0.2 + bodyBob, 0]} 
+        position={[-0.2, -0.2 + bodyBob, 0]} 
         rotation={[legSwing, 0, 0]}
       >
         <boxGeometry args={[0.2, 0.6, 0.2]} />
@@ -69,7 +69,7 @@ export default function Character({ position, rotation, isWalking }) {
       
       {/* Right Leg */}
       <mesh 
-        position={[0.15, -0.2 + bodyBob, 0]} 
+        position={[0.2, -0.2 + bodyBob, 0]} 
         rotation={[-legSwing, 0, 0]}
       >
         <boxGeometry args={[0.2, 0.6, 0.2]} />
