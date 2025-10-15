@@ -15,31 +15,61 @@ import CameraController from "../components/CameraController";
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
     <>
-      {/* Simple Blue Sky */}
+      {/* More Blue Sky */}
       <Sky
         distance={450000}
         sunPosition={[0, 1, 0]}
         inclination={0}
         azimuth={0.25}
+        turbidity={2}
+        rayleigh={0.5}
+        mieCoefficient={0.005}
+        mieDirectionalG={0.8}
       />
       
-      {/* Clean Lego-style Floor */}
+      {/* Simple Stable Floor */}
       <Grid
         renderOrder={-1}
         position={[0, -0.01, 0]}
         infiniteGrid
         cellSize={0.5}
         cellThickness={0.3}
-        cellColor="#FFFFFF"
+        cellColor="#f0f8f0"
         sectionSize={5}
         sectionThickness={0.8}
-        sectionColor="#000000"
+        sectionColor="#333333"
         fadeDistance={100}
         fadeStrength={0.3}
         followCamera={false}
         followCameraSpeed={0.01}
       />
       
+      {/* Wooden Planks */}
+      <mesh position={[0, 0.1, 0]}>
+        <boxGeometry args={[8, 0.2, 1]} />
+        <meshLambertMaterial color="#8B4513" />
+      </mesh>
+      
+      <mesh position={[0, 0.1, 5]}>
+        <boxGeometry args={[6, 0.2, 1]} />
+        <meshLambertMaterial color="#8B4513" />
+      </mesh>
+      
+      <mesh position={[5, 0.1, 0]}>
+        <boxGeometry args={[1, 0.2, 8]} />
+        <meshLambertMaterial color="#8B4513" />
+      </mesh>
+      
+      <mesh position={[-3, 0.1, -2]}>
+        <boxGeometry args={[4, 0.2, 1]} />
+        <meshLambertMaterial color="#8B4513" />
+      </mesh>
+      
+      <mesh position={[2, 0.1, -4]}>
+        <boxGeometry args={[1, 0.2, 3]} />
+        <meshLambertMaterial color="#8B4513" />
+      </mesh>
+
       {/* Character */}
       <Character position={characterPosition} rotation={characterRotation} isWalking={isWalking} />
       
@@ -49,9 +79,9 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
         characterRotation={characterRotation} 
       />
       
-      {/* Simple Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
+      {/* Stable Lighting */}
+      <ambientLight intensity={0.8} color="#ffffff" />
+      <directionalLight position={[10, 10, 5]} intensity={1.0} color="#ffffff" />
     </>
   );
 }
