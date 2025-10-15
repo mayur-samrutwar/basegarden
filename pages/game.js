@@ -11,6 +11,7 @@ import { Canvas } from "@react-three/fiber";
 import { Sky, Grid } from "@react-three/drei";
 import Character from "../components/Character";
 import CameraController from "../components/CameraController";
+import GrassField from "../components/GrassField";
 
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
@@ -27,11 +28,8 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
         mieDirectionalG={0.8}
       />
       
-      {/* Finite Garden Floor */}
-      <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[50, 50]} />
-        <meshLambertMaterial color="#f0f8f0" />
-      </mesh>
+      {/* Grass Field */}
+      <GrassField />
       
       {/* Garden Fences */}
       {/* North Fence - Connected Poles and Planks */}
