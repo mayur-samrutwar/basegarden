@@ -1,6 +1,8 @@
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
+import { parseEther } from "viem";
+import { gardenCoreAbi } from "../lib/abi";
 import {
   ConnectWallet,
   Wallet,
@@ -16,6 +18,8 @@ import Shop from "../components/Shop";
 import Shop2 from "../components/Shop2";
 import ProximityHint from "../components/ProximityHint";
 import SeedMarketplace from "../components/SeedMarketplace";
+import HUD from "../components/HUD";
+import InventorySidebar from "../components/InventorySidebar";
 
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
@@ -147,6 +151,33 @@ export default function Game() {
     { type: 3, name: 'Sage', growDuration: 20, priceEth: '0.0015' },
   ]), []);
 
+  const gardenCoreAddress = process.env.NEXT_PUBLIC_GARDENCORE_ADDRESS;
+  const items1155Address = process.env.NEXT_PUBLIC_ITEMS1155_ADDRESS;
+  const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
+  const { writeContractAsync } = useWriteContract();
+
+  useEffect(() => {
+    const handler = (e) => {
+      const { seedType, qty } = e.detail || {};
+      if (!seedType || !qty) return;
+      if (!gardenCoreAddress) return;
+      const seed = seedList.find(s => s.type === seedType);
+      if (!seed) return;
+      // call buySeeds with msg.value
+      writeContractAsync({
+        address: gardenCoreAddress,
+        abi: gardenCoreAbi,
+        functionName: 'buySeeds',
+        args: [seedType, BigInt(qty)],
+        value: parseEther((Number(seed.priceEth) * qty).toString()),
+      }).then(()=>{
+        setMarketOpen(false);
+      }).catch(()=>{});
+    };
+    window.addEventListener('seed:buy', handler);
+    return () => window.removeEventListener('seed:buy', handler);
+  }, [gardenCoreAddress, seedList, writeContractAsync]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -215,8 +246,9 @@ export default function Game() {
         
         // Shop collision detection for both shops (rotated 90 degrees)
         const shops = [
-          { x: 8, z: 15, width: 3.4, depth: 6.4 }, // seed shop
-          { x: -8, z: 15, width: 3.4, depth: 6.4 } // other shop
+          // Both shop meshes are rotated 90deg, so use a wider horizontal AABB
+          { x: 8, z: 15, width: 6.4, depth: 3.4 }, // seed shop
+          { x: -8, z: 15, width: 6.4, depth: 3.4 } // other shop
         ];
         
         // Check collision with each shop
@@ -306,6 +338,16 @@ export default function Game() {
 
         {/* Seed marketplace modal */}
         <SeedMarketplace open={marketOpen} onClose={()=>setMarketOpen(false)} seeds={seedList} />
+
+        {/* HUD */}
+        <HUD gardenTokenAddress={gardenTokenAddress} />
+
+        {/* Inventory Sidebar */}
+        <InventorySidebar items1155Address={items1155Address} seeds={[
+          { type:1, name:'Carrot', growDuration:60, seedTokenId:1001, cropTokenId:2001 },
+          { type:2, name:'Mint', growDuration:10, seedTokenId:1002, cropTokenId:2002 },
+          { type:3, name:'Sage', growDuration:20, seedTokenId:1003, cropTokenId:2003 },
+        ]} />
       </main>
     </div>
   );

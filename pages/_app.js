@@ -15,7 +15,11 @@ export default function App({ Component, pageProps }) {
         wallet: { display: "modal", preference: "all" },
       }}
     >
-      <Component {...pageProps} />
+      <div className="min-h-screen">
+        {/* Fixed transparent overlay region for any global UI */}
+        <div className="fixed inset-x-0 top-0 z-50 pointer-events-none" />
+        <Component {...pageProps} />
+      </div>
     </OnchainKitProvider>
   );
 }
