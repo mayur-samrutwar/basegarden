@@ -450,15 +450,7 @@ export default function Game() {
   }
 
   return (
-    <div className="min-h-screen grid grid-rows-[auto_1fr]">
-      <header className="flex justify-end p-4">
-        <Wallet>
-          <ConnectWallet />
-          <WalletDropdown>
-            <WalletDropdownDisconnect />
-          </WalletDropdown>
-        </Wallet>
-      </header>
+    <div className="min-h-screen">
       <main className="relative min-h-screen">
         <div className="absolute inset-0">
           <Canvas
