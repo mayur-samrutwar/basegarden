@@ -1,6 +1,7 @@
 import "@/styles/globals.css";
 import { OnchainKitProvider } from "@coinbase/onchainkit";
 import { WagmiProvider, createConfig, http } from "wagmi";
+import { coinbaseWallet, metaMask, walletConnect } from "@wagmi/connectors";
 import { base, baseSepolia } from "wagmi/chains";
 
 export default function App({ Component, pageProps }) {
@@ -12,10 +13,16 @@ export default function App({ Component, pageProps }) {
 
   const config = createConfig({
     chains: [base, baseSepolia],
+    connectors: [
+      coinbaseWallet({ appName: 'BaseGarden' }),
+      metaMask(),
+      walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo' }),
+    ],
     transports: {
       [base.id]: http(),
       [baseSepolia.id]: http(rpcUrl),
     },
+    autoConnect: true,
     ssr: true,
   });
 

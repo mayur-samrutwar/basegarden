@@ -305,14 +305,11 @@ export default function Game() {
   }, [gardenCoreAddress, seedList, writeContractAsync]);
 
   useEffect(() => {
+    // ensure we only consider client-side after mount to avoid SSR mismatch
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (mounted && !isConnected && !isConnecting) {
-      router.replace("/");
-    }
-  }, [mounted, isConnected, isConnecting, router]);
+  // Remove redirect logic - let the connect gate handle it
 
   // Smooth movement with continuous key handling
   useEffect(() => {
@@ -432,9 +429,24 @@ export default function Game() {
     );
   }
 
-  // If not connected, don't render anything (redirect will happen)
+  // Connect gate - aligned layout with left-aligned text inside a centered container
   if (!isConnected) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-full max-w-xl px-6">
+          <h1 className="text-3xl font-bold mb-3">Connect Wallet to Play</h1>
+          <p className="text-gray-600 mb-6">You need to connect your wallet to access the garden</p>
+          <div>
+            <Wallet>
+              <ConnectWallet />
+              <WalletDropdown>
+                <WalletDropdownDisconnect />
+              </WalletDropdown>
+            </Wallet>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -447,11 +459,12 @@ export default function Game() {
           </WalletDropdown>
         </Wallet>
       </header>
-      <main className="relative">
-        <Canvas
-          camera={{ position: [0, 0, 0], fov: 60 }}
-          style={{ width: "100%", height: "100vh" }}
-        >
+      <main className="relative min-h-screen">
+        <div className="absolute inset-0">
+          <Canvas
+            camera={{ position: [0, 0, 0], fov: 60 }}
+            style={{ width: "100%", height: "100%" }}
+          >
           <GardenScene 
             characterPosition={characterPosition} 
             characterRotation={characterRotation}
@@ -463,10 +476,11 @@ export default function Game() {
             plotCells={plotCells}
             cellInfo={cellInfo}
           />
-        </Canvas>
+          </Canvas>
+        </div>
         
         {/* Controls hint */}
-        <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded">
+        <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-2 rounded">
           <p className="text-sm">WASD: Move | Q/E: Turn</p>
         </div>
 

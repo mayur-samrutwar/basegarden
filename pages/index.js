@@ -1,4 +1,5 @@
 import { useRouter } from "next/router";
+import { useAccount } from "wagmi";
 import {
   ConnectWallet,
   Wallet,
@@ -8,6 +9,7 @@ import {
 
 export default function Home() {
   const router = useRouter();
+  const { isConnected, isConnecting } = useAccount();
 
   return (
     <div className="min-h-screen grid grid-rows-[auto_1fr]">
@@ -26,6 +28,8 @@ export default function Home() {
         >
           Play
         </button>
+        {isConnecting && <div className="ml-4 text-xs text-gray-500">Connecting wallet…</div>}
+        {!isConnecting && isConnected && <div className="ml-4 text-xs text-green-600">Wallet connected</div>}
       </main>
     </div>
   );
