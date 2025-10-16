@@ -16,7 +16,7 @@ export default function HUD({ gardenTokenAddress }) {
   });
 
   const ethDisplay = ethBal ? Number(ethBal.formatted).toFixed(2) : "0.00";
-  const gardenDisplay = gardenBal ? (Number(gardenBal) / 1e18).toFixed(2) : "0.00";
+  const gardenDisplay = gardenBal ? (Number(gardenBal) / 1e18).toFixed(4) : "0.0000";
 
   if (typeof window !== 'undefined') {
     console.debug('[HUD] chainId', chainId, 'address', address);
