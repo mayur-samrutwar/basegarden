@@ -1,15 +1,17 @@
 import "@/styles/globals.css";
 import { OnchainKitProvider } from "@coinbase/onchainkit";
-import { base } from "wagmi/chains";
+import { base, baseSepolia } from "wagmi/chains";
 
 export default function App({ Component, pageProps }) {
   const apiKey =
     process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY || "your_api_key_here";
+  const envChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "84532", 10);
+  const targetChain = envChainId === 84532 ? baseSepolia : base;
 
   return (
     <OnchainKitProvider
       apiKey={apiKey}
-      chain={base}
+      chain={targetChain}
       config={{
         appearance: { mode: "auto" },
         wallet: { display: "modal", preference: "all" },

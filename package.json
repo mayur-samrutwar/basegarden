@@ -11,7 +11,9 @@
     "test:contracts": "hardhat test",
     "chain": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-    "config:seeds": "hardhat run scripts/configSeeds.js --network localhost"
+    "config:seeds": "hardhat run scripts/configSeeds.js --network localhost",
+    "account:new": "hardhat run scripts/generateAccount.js",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network base_sepolia"
   },
   "dependencies": {
     "@coinbase/onchainkit": "^1.1.1",

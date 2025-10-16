@@ -162,6 +162,7 @@ export default function Game() {
   const items1155Address = process.env.NEXT_PUBLIC_ITEMS1155_ADDRESS;
   const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
   const { writeContractAsync } = useWriteContract();
+  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
   const handleCellClick = (plotIdx, cellId) => {
     // Example: attempt to plant Carrot (1) when clicking a cell
     if (!gardenCoreAddress) return;
@@ -181,14 +182,18 @@ export default function Game() {
       const seed = seedList.find(s => s.type === seedType);
       if (!seed) return;
       // call buySeeds with msg.value
+      const value = parseEther(seed.priceEth) * BigInt(qty);
       writeContractAsync({
         address: gardenCoreAddress,
         abi: gardenCoreAbi,
         functionName: 'buySeeds',
         args: [seedType, BigInt(qty)],
-        value: parseEther((Number(seed.priceEth) * qty).toString()),
+        value,
+        chainId,
       }).then(()=>{
         setMarketOpen(false);
+        // naive feedback
+        window.alert('Purchase sent. Check wallet and inventory.');
       }).catch(()=>{});
     };
     window.addEventListener('seed:buy', handler);

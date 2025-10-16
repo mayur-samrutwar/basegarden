@@ -3,14 +3,16 @@ import { erc20Abi } from "../lib/abi";
 
 export default function HUD({ gardenTokenAddress }) {
   const { address } = useAccount();
-  const { data: ethBal } = useBalance({ address });
+  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
+  const { data: ethBal } = useBalance({ address, chainId, watch: true });
 
   const { data: gardenBal } = useReadContract({
     address: gardenTokenAddress,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && !!gardenTokenAddress },
+    chainId,
+    query: { enabled: !!address && !!gardenTokenAddress, refetchInterval: 3000 },
   });
 
   const ethDisplay = ethBal ? Number(ethBal.formatted).toFixed(2) : "0.00";

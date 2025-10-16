@@ -43,7 +43,7 @@ export default function SeedMarketplace({ open, onClose, seeds = [] }) {
             <input type="number" min={1} value={qty} onChange={(e)=>setQty(parseInt(e.target.value||'1'))} className="w-20 border rounded-lg px-2 py-1" />
           </div>
           <button
-            disabled={!selected}
+            disabled={!selected || qty <= 0}
             className="px-4 py-2 rounded-lg bg-black text-white disabled:bg-gray-300"
             onClick={()=>{
               // Placeholder: emit event to purchase in parent

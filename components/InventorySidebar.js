@@ -5,6 +5,7 @@ import { items1155Abi } from "../lib/abi";
 export default function InventorySidebar({ items1155Address, seeds }) {
   const { address } = useAccount();
   const [open, setOpen] = useState(false);
+  const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
 
   const balances = seeds.map(({ seedTokenId, cropTokenId }) => ({
     seed: useReadContract({
@@ -12,14 +13,16 @@ export default function InventorySidebar({ items1155Address, seeds }) {
       abi: items1155Abi,
       functionName: "balanceOf",
       args: address ? [address, BigInt(seedTokenId)] : undefined,
-      query: { enabled: !!address && !!items1155Address },
+      chainId,
+      query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 },
     }).data || 0n,
     crop: useReadContract({
       address: items1155Address,
       abi: items1155Abi,
       functionName: "balanceOf",
       args: address ? [address, BigInt(cropTokenId)] : undefined,
-      query: { enabled: !!address && !!items1155Address },
+      chainId,
+      query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 },
     }).data || 0n,
   }));
 
