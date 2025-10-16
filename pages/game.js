@@ -19,10 +19,11 @@ import Shop2 from "../components/Shop2";
 import Plots from "../components/Plots";
 import ProximityHint from "../components/ProximityHint";
 import SeedMarketplace from "../components/SeedMarketplace";
+import CropShop from "../components/CropShop";
 import HUD from "../components/HUD";
 import InventorySidebar from "../components/InventorySidebar";
 
-function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick, hovered, setHovered, plantingCell, plotCells }) {
+function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick, hovered, setHovered, plantingCell, plotCells, cellInfo }) {
   return (
     <>
       {/* More Blue Sky */}
@@ -115,7 +116,7 @@ function GardenScene({ characterPosition, characterRotation, isWalking, onCellCl
       />
 
       {/* Initial free plots (2) rendered as soil */}
-      <Plots onCellClick={onCellClick} hovered={hovered} setHovered={setHovered} plantingCell={plantingCell} plotCells={plotCells} plots={[
+      <Plots onCellClick={onCellClick} hovered={hovered} setHovered={setHovered} plantingCell={plantingCell} plotCells={plotCells} cellInfo={cellInfo} plots={[
         { x: -5, z: 0, width: 4, depth: 4 },
         { x: -0.5, z: 0, width: 4, depth: 4 },
       ]} />
@@ -150,8 +151,11 @@ export default function Game() {
   const [isWalking, setIsWalking] = useState(false);
   const [nearSeedShop, setNearSeedShop] = useState(false);
   const [marketOpen, setMarketOpen] = useState(false);
+  const [nearCropShop, setNearCropShop] = useState(false);
+  const [cropShopOpen, setCropShopOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const [plantingCell, setPlantingCell] = useState(null);
+  const [harvestingCell, setHarvestingCell] = useState(null);
   const [selectedSeedType, setSelectedSeedType] = useState(null);
 
   const seedShop = useMemo(() => ({ x: 8, z: 15, width: 3.4, depth: 6.4 }), []);
@@ -219,25 +223,55 @@ export default function Game() {
   if (typeof window !== 'undefined') {
     console.debug('[Game] plotCells', plotCells);
   }
+  // derive cell info for readiness without extra RPC: decode plantedAt & growDuration from packed value
+  const nowSec = Math.floor(Date.now() / 1000);
+  const cellInfo = plotCells.map((cells) => cells.map((packed) => {
+    const v = typeof packed === 'bigint' ? packed : 0n;
+    if (v === 0n) return null;
+    // packed layout from PlotCodec: bits [0..1]=status, [2..15]=seedType, [16..79]=plantedAt, [80..111]=growDuration
+    const status = Number((v >> 0n) & 0x3n);
+    const seedType = Number((v >> 2n) & 0x3FFFn);
+    const plantedAt = Number((v >> 16n) & 0xFFFFFFFFFFFFFFFFn);
+    const growDuration = Number((v >> 80n) & 0xFFFFFFFFn);
+    const ready = nowSec >= plantedAt + growDuration;
+    return { status, seedType, plantedAt, growDuration, ready };
+  }));
   const handleCellClick = (plotIdx, cellId) => {
     if (!gardenCoreAddress) return;
+    const packed = plotCells[plotIdx] ? plotCells[plotIdx][cellId] : 0n;
+    const isOccupied = typeof packed === 'bigint' ? packed !== 0n : false;
+    const info = cellInfo && cellInfo[plotIdx] ? cellInfo[plotIdx][cellId] : null;
+
+    // If occupied and ready -> harvest
+    if (isOccupied && info && info.ready) {
+      setHarvestingCell({ plotIdx, cellId });
+      writeContractAsync({
+        address: gardenCoreAddress,
+        abi: gardenCoreAbi,
+        functionName: 'harvest',
+        args: [plotIdx, cellId],
+      }).then(()=>{
+        plotReads.forEach(r => r.refetch?.());
+        setTimeout(()=> setHarvestingCell(null), 800);
+      }).catch(()=>{
+        setHarvestingCell(null);
+      });
+      return;
+    }
+
+    // If occupied but not ready -> do nothing
+    if (isOccupied) return;
+
+    // Planting flow (empty cell): must have seed selected and balance > 0
     if (!selectedSeedType) {
       window.alert('Select a seed in the inventory first');
       return;
     }
-    // ensure player has at least 1 seed of the selected type before attempting on-chain call
     const selIdx = seedTypes.indexOf(selectedSeedType);
     const balData = selIdx >= 0 ? seedBalances[selIdx]?.data : undefined;
     const seedQty = typeof balData === 'bigint' ? balData : 0n;
-    if (seedQty === 0n) {
-      // no-op: avoid contract revert and unnecessary transaction
-      return;
-    }
-    // prevent planting if occupied
-    const occupied = plotCells[plotIdx] && (plotCells[plotIdx][cellId] ?? 0n) !== 0n;
-    if (occupied) {
-      return;
-    }
+    if (seedQty === 0n) return;
+
     setPlantingCell({ plotIdx, cellId });
     writeContractAsync({
       address: gardenCoreAddress,
@@ -245,7 +279,6 @@ export default function Game() {
       functionName: 'plant',
       args: [plotIdx, cellId, selectedSeedType],
     }).then(()=>{
-      // refresh plot reads immediately
       plotReads.forEach(r => r.refetch?.());
       setTimeout(()=> setPlantingCell(null), 1200);
     }).catch(()=>{
@@ -303,6 +336,9 @@ export default function Game() {
       if (key === 'p' && nearSeedShop) {
         setMarketOpen(true);
       }
+      if (key === 'o' && nearCropShop) {
+        setCropShopOpen(true);
+      }
     };
 
     const handleKeyUp = (event) => {
@@ -319,7 +355,7 @@ export default function Game() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [nearSeedShop]);
+  }, [nearSeedShop, nearCropShop]);
 
   // Smoother movement loop with reduced frequency
   useEffect(() => {
@@ -351,13 +387,13 @@ export default function Game() {
         
         // Shop collision detection for both shops (rotated 90 degrees)
         const shops = [
-          // Both shop meshes are rotated 90deg, so use a wider horizontal AABB
-          { x: 8, z: 15, width: 6.4, depth: 3.4 }, // seed shop
-          { x: -8, z: 15, width: 6.4, depth: 3.4 } // other shop
+          { x: 8, z: 15, width: 6.4, depth: 3.4, type: 'seed' },
+          { x: -8, z: 15, width: 6.4, depth: 3.4, type: 'crop' }
         ];
         
         // Check collision with each shop
         let nearSeed = false;
+        let nearCrop = false;
         for (const shop of shops) {
           const insideShopX = newX >= shop.x - shop.width/2 && newX <= shop.x + shop.width/2;
           const insideShopZ = newZ >= shop.z - shop.depth/2 && newZ <= shop.z + shop.depth/2;
@@ -368,13 +404,15 @@ export default function Game() {
             newZ = z;
             break;
           }
-          // proximity check (within 2 units) to seed shop only
-          const dx = newX - seedShop.x;
-          const dz = newZ - seedShop.z;
+          // proximity check (within 2 units)
+          const dx = newX - shop.x;
+          const dz = newZ - shop.z;
           const dist = Math.sqrt(dx*dx + dz*dz);
-          if (dist < 2.2) nearSeed = true;
+          if (shop.type === 'seed' && dist < 2.2) nearSeed = true;
+          if (shop.type === 'crop' && dist < 2.2) nearCrop = true;
         }
         setNearSeedShop(nearSeed);
+        setNearCropShop(nearCrop);
         
         // Boundary collision - keep character inside garden
         newX = Math.max(-gardenSize, Math.min(gardenSize, newX));
@@ -435,6 +473,7 @@ export default function Game() {
             setHovered={setHovered}
             plantingCell={plantingCell}
             plotCells={plotCells}
+            cellInfo={cellInfo}
           />
         </Canvas>
         
@@ -445,9 +484,12 @@ export default function Game() {
 
         {/* Seed shop proximity hint */}
         <ProximityHint visible={nearSeedShop && !marketOpen} text="Press P to open Seed Shop" />
+        <ProximityHint visible={nearCropShop && !cropShopOpen} text="Press O to open Crop Shop" />
 
         {/* Seed marketplace modal */}
         <SeedMarketplace open={marketOpen} onClose={()=>setMarketOpen(false)} seeds={seedList} />
+        {/* Crop shop modal */}
+        <CropShop open={cropShopOpen} onClose={()=>setCropShopOpen(false)} gardenCoreAddress={gardenCoreAddress} items1155Address={items1155Address} />
 
         {/* HUD */}
         <HUD gardenTokenAddress={gardenTokenAddress} />

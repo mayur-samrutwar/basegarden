@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 
-export default function Plots({ plots = [], onCellClick, hovered, setHovered, plantingCell, plotCells }) {
+export default function Plots({ plots = [], onCellClick, hovered, setHovered, plantingCell, plotCells, cellInfo }) {
   const groupRefs = useRef([]);
   const [t, setT] = useState(0);
 
@@ -27,6 +27,7 @@ export default function Plots({ plots = [], onCellClick, hovered, setHovered, pl
             const isHovered = hovered && hovered.plotIdx === idx && hovered.cellId === i;
             const isPlanting = plantingCell && plantingCell.plotIdx === idx && plantingCell.cellId === i;
             const occupied = !!(plotCells && plotCells[idx] && (plotCells[idx][i] ?? 0n) !== 0n);
+            const isReady = !!(cellInfo && cellInfo[idx] && cellInfo[idx][i] && cellInfo[idx][i].ready);
             return (
               <mesh
                 key={`cell-${i}`}
@@ -36,7 +37,7 @@ export default function Plots({ plots = [], onCellClick, hovered, setHovered, pl
                 onClick={() => onCellClick?.(idx, i)}
               >
                 <boxGeometry args={[cellW * 0.95, 0.01, cellD * 0.95]} />
-                <meshStandardMaterial color={occupied ? "#5f4a35" : (isHovered ? "#a06a4b" : "#8a5a3b")} emissive={isHovered ? "#ffd9a6" : "#000000"} emissiveIntensity={isHovered ? 0.3 : 0} />
+                <meshStandardMaterial color={isReady ? "#6a553f" : (occupied ? "#5f4a35" : (isHovered ? "#a06a4b" : "#8a5a3b"))} emissive={isHovered ? "#ffd9a6" : "#000000"} emissiveIntensity={isHovered ? 0.3 : 0} />
                 {isPlanting && (
                   <mesh position={[0, 0.05 + Math.sin(t * 8) * 0.01, 0]}>
                     <boxGeometry args={[cellW * 0.5, 0.02, cellD * 0.5]} />
@@ -47,6 +48,12 @@ export default function Plots({ plots = [], onCellClick, hovered, setHovered, pl
                   <mesh position={[0, 0.05, 0]}>
                     <boxGeometry args={[cellW * 0.4, 0.02, cellD * 0.4]} />
                     <meshStandardMaterial color="#3f8f3a" />
+                  </mesh>
+                )}
+                {occupied && !isPlanting && cellInfo && cellInfo[idx] && cellInfo[idx][i] && cellInfo[idx][i].ready && (
+                  <mesh position={[0, 0.08 + Math.sin(t * 6) * 0.01, 0]}>
+                    <boxGeometry args={[cellW * 0.25, 0.02, cellD * 0.25]} />
+                    <meshStandardMaterial color="#f5d142" />
                   </mesh>
                 )}
               </mesh>
