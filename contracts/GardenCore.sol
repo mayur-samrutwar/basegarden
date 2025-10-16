@@ -38,8 +38,8 @@ contract GardenCore is Ownable, ReentrancyGuard {
     error ExceedsMaxPlots();
 
     event SeedsPurchased(address indexed player, uint16 indexed seedType, uint256 qty, uint256 value);
-    event Planted(address indexed player, uint16 indexed plotId, uint16 seedType, uint64 plantedAt);
-    event Harvested(address indexed player, uint16 indexed plotId, uint16 seedType, uint64 harvestedAt);
+    event Planted(address indexed player, uint16 indexed plotId, uint8 indexed cellId, uint16 seedType, uint64 plantedAt);
+    event Harvested(address indexed player, uint16 indexed plotId, uint8 indexed cellId, uint16 seedType, uint64 harvestedAt);
     event CropsSold(address indexed player, uint16 indexed seedType, uint256 qty, uint256 rewardGarden);
     event SeedConfigUpdated(uint16 indexed seedType, SeedConfig cfg);
     event PlotsPerPlayerUpdated(uint16 plots);
@@ -53,7 +53,8 @@ contract GardenCore is Ownable, ReentrancyGuard {
     // Total number of plot definitions available in the fixed play area (global bound)
     uint16 public plotCount;
     mapping(uint16 => SeedConfig) public seedConfigs;
-    mapping(address => mapping(uint16 => uint256)) public plots; // packed
+    // per-cell packed plot state: key = plotId * cellsPerPlot + cellId
+    mapping(address => mapping(uint32 => uint256)) public cells; // packed
 
     // Plot definitions configured by admin
     struct PlotDef { int32 x; int32 y; uint16 width; uint16 height; uint96 priceWei; bool available; }
@@ -61,6 +62,7 @@ contract GardenCore is Ownable, ReentrancyGuard {
     // Player-specific unlocked plot limit (number of plots from 0..limit-1 accessible). 0 => defaultInitialFreePlots
     mapping(address => uint16) public playerPlotLimit;
     uint16 public initialFreePlots = 2; // each player gets 2 plots initially
+    uint8 public constant cellsPerPlot = 12; // 3x4 grid per plot
 
     constructor(address _items1155, uint16 _plotCount) Ownable(msg.sender) {
         items1155 = IItems1155(_items1155);
@@ -74,14 +76,12 @@ contract GardenCore is Ownable, ReentrancyGuard {
 
     function getPlot(address player, uint16 plotId) external view returns (uint256) {
         if (plotId >= plotCount) revert OutOfBoundsPlot();
-        return plots[player][plotId];
+        // legacy compatibility: empty
+        return 0;
     }
 
     function getPlayerPlots(address player) external view returns (uint256[] memory out) {
         out = new uint256[](plotCount);
-        for (uint16 i = 0; i < plotCount; i++) {
-            out[i] = plots[player][i];
-        }
     }
 
     function plotsLimitOf(address player) public view returns (uint16) {
@@ -97,6 +97,23 @@ contract GardenCore is Ownable, ReentrancyGuard {
         growDuration = PlotCodec.growDurationOf(packedPlot);
     }
 
+    function _cellKey(uint16 plotId, uint8 cellId) internal pure returns (uint32) {
+        return uint32(uint32(plotId) * uint32(cellsPerPlot) + uint32(cellId));
+    }
+
+    function getCell(address player, uint16 plotId, uint8 cellId) external view returns (uint256) {
+        if (plotId >= plotCount) revert OutOfBoundsPlot();
+        if (cellId >= cellsPerPlot) revert OutOfBoundsPlot();
+        return cells[player][_cellKey(plotId, cellId)];
+    }
+
+    function getPlotCells(address player, uint16 plotId) external view returns (uint256[cellsPerPlot] memory out) {
+        if (plotId >= plotCount) revert OutOfBoundsPlot();
+        for (uint8 i = 0; i < cellsPerPlot; i++) {
+            out[i] = cells[player][_cellKey(plotId, i)];
+        }
+    }
+
     // actions
     function buySeeds(uint16 seedType, uint256 qty) external payable {
         SeedConfig memory cfg = seedConfigs[seedType];
@@ -108,26 +125,30 @@ contract GardenCore is Ownable, ReentrancyGuard {
         emit SeedsPurchased(msg.sender, seedType, qty, cost);
     }
 
-    function plant(uint16 plotId, uint16 seedType) external {
+    function plant(uint16 plotId, uint8 cellId, uint16 seedType) external {
         if (plotId >= plotCount) revert OutOfBoundsPlot();
+        if (cellId >= cellsPerPlot) revert OutOfBoundsPlot();
         if (plotId >= plotsLimitOf(msg.sender)) revert PlotLocked();
         SeedConfig memory cfg = seedConfigs[seedType];
         if (!cfg.active) revert InactiveSeed();
 
-        uint256 current = plots[msg.sender][plotId];
+        uint32 key = _cellKey(plotId, cellId);
+        uint256 current = cells[msg.sender][key];
         if (PlotCodec.statusOf(current) != 0) revert PlotNotEmpty();
 
         // burn one seed
         items1155.burn(msg.sender, uint256(cfg.seedTokenId), 1);
 
         uint256 packed = PlotCodec.encode(1, seedType, uint64(block.timestamp), cfg.growDuration);
-        plots[msg.sender][plotId] = packed;
-        emit Planted(msg.sender, plotId, seedType, uint64(block.timestamp));
+        cells[msg.sender][key] = packed;
+        emit Planted(msg.sender, plotId, cellId, seedType, uint64(block.timestamp));
     }
 
-    function harvest(uint16 plotId) external {
+    function harvest(uint16 plotId, uint8 cellId) external {
         if (plotId >= plotCount) revert OutOfBoundsPlot();
-        uint256 current = plots[msg.sender][plotId];
+        if (cellId >= cellsPerPlot) revert OutOfBoundsPlot();
+        uint32 key = _cellKey(plotId, cellId);
+        uint256 current = cells[msg.sender][key];
         uint8 status = PlotCodec.statusOf(current);
         if (status == 0) revert PlotNotMature();
         if (status == 2) revert AlreadyHarvested();
@@ -140,11 +161,11 @@ contract GardenCore is Ownable, ReentrancyGuard {
         SeedConfig memory cfg = seedConfigs[seedType];
 
         // clear to empty to allow immediate replanting
-        plots[msg.sender][plotId] = 0;
+        cells[msg.sender][key] = 0;
 
         // mint crop
         items1155.mint(msg.sender, uint256(cfg.cropTokenId), 1, "");
-        emit Harvested(msg.sender, plotId, seedType, uint64(block.timestamp));
+        emit Harvested(msg.sender, plotId, cellId, seedType, uint64(block.timestamp));
     }
 
     function sellCrops(uint16 seedType, uint256 qty) external nonReentrant {

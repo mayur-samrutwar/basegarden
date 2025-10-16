@@ -60,46 +60,45 @@ describe("GardenCore", function () {
     await expect(garden.buySeeds(1, 1, { value: 0 })).to.be.reverted;
   });
 
-  it("plants burns seed and sets plot", async () => {
+  it("plants burns seed and sets cell state", async () => {
     const { garden, items } = await deploy();
     const [owner] = await ethers.getSigners();
     await garden.buySeeds(1, 1, { value: ethers.parseEther("0.001") });
 
-    await garden.plant(0, 1);
+    await garden.plant(0, 0, 1); // plot 0, cell 0
     expect(await items.balanceOf(owner.address, 1001)).to.equal(0);
-
-    const packed = await garden.getPlot(owner.address, 0);
-    expect(packed).to.not.equal(0);
+    const packed = await garden.getCell(owner.address, 0, 0);
+    expect(packed).to.not.equal(0n);
   });
 
   it("harvests only after maturity and mints crop", async () => {
     const { garden, items } = await deploy();
     const [owner] = await ethers.getSigners();
     await garden.buySeeds(1, 1, { value: ethers.parseEther("0.001") });
-    await garden.plant(0, 1);
+    await garden.plant(0, 0, 1);
 
-    await expect(garden.harvest(0)).to.be.reverted; // not mature yet
+    await expect(garden.harvest(0, 0)).to.be.reverted; // not mature yet
 
     // increase time
     await ethers.provider.send("evm_increaseTime", [3]);
     await ethers.provider.send("evm_mine", []);
 
-    await expect(garden.harvest(0)).to.emit(garden, "Harvested");
+    await expect(garden.harvest(0, 0)).to.emit(garden, "Harvested");
     expect(await items.balanceOf(owner.address, 2001)).to.equal(1);
 
     // harvested plot should be cleared
-    const packedAfter = await garden.getPlot(owner.address, 0);
-    expect(packedAfter).to.equal(0);
+    const packedAfter = await garden.getCell(owner.address, 0, 0);
+    expect(packedAfter).to.equal(0n);
   });
 
   it("sells crops and gets $GARDEN reward", async () => {
     const { garden, items, token } = await deploy();
     const [owner] = await ethers.getSigners();
     await garden.buySeeds(1, 1, { value: ethers.parseEther("0.001") });
-    await garden.plant(0, 1);
+    await garden.plant(0, 0, 1);
     await ethers.provider.send("evm_increaseTime", [3]);
     await ethers.provider.send("evm_mine", []);
-    await garden.harvest(0);
+    await garden.harvest(0, 0);
 
     const gardenBefore = await token.balanceOf(owner.address);
     await garden.sellCrops(1, 1);
@@ -114,14 +113,14 @@ describe("GardenCore", function () {
 
     // buy a seed and try to plant on plot 2 (should be locked initially)
     await garden.buySeeds(1, 1, { value: ethers.parseEther("0.001") });
-    await expect(garden.plant(2, 1)).to.be.reverted; // PlotLocked
+    await expect(garden.plant(2, 0, 1)).to.be.reverted; // PlotLocked
 
     // buy exactly one more plot (plotId 2) for 0.01 ETH
     await expect(garden.buyPlots(1, { value: ethers.parseEther("0.01") }))
       .to.emit(garden, "PlotsPurchased");
 
     // now planting on plot 2 should work
-    await expect(garden.plant(2, 1)).to.emit(garden, "Planted");
+    await expect(garden.plant(2, 0, 1)).to.emit(garden, "Planted");
   });
 
   it("reverts when buying plots with wrong value or exceeding max", async () => {

@@ -16,12 +16,13 @@ import CameraController from "../components/CameraController";
 import GrassField from "../components/GrassField";
 import Shop from "../components/Shop";
 import Shop2 from "../components/Shop2";
+import Plots from "../components/Plots";
 import ProximityHint from "../components/ProximityHint";
 import SeedMarketplace from "../components/SeedMarketplace";
 import HUD from "../components/HUD";
 import InventorySidebar from "../components/InventorySidebar";
 
-function GardenScene({ characterPosition, characterRotation, isWalking }) {
+function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick }) {
   return (
     <>
       {/* More Blue Sky */}
@@ -113,6 +114,12 @@ function GardenScene({ characterPosition, characterRotation, isWalking }) {
         followCameraSpeed={0.01}
       />
 
+      {/* Initial free plots (2) rendered as soil */}
+      <Plots onCellClick={onCellClick} plots={[
+        { x: -5, z: 0, width: 4, depth: 4 },
+        { x: -0.5, z: 0, width: 4, depth: 4 },
+      ]} />
+
       {/* Shops */}
       <Shop position={[8, 0, 15]} rotation={[0, Math.PI/2, 0]} />
       <Shop2 position={[-8, 0, 15]} rotation={[0, Math.PI/2, 0]} />
@@ -155,6 +162,16 @@ export default function Game() {
   const items1155Address = process.env.NEXT_PUBLIC_ITEMS1155_ADDRESS;
   const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
   const { writeContractAsync } = useWriteContract();
+  const handleCellClick = (plotIdx, cellId) => {
+    // Example: attempt to plant Carrot (1) when clicking a cell
+    if (!gardenCoreAddress) return;
+    writeContractAsync({
+      address: gardenCoreAddress,
+      abi: gardenCoreAbi,
+      functionName: 'plant',
+      args: [plotIdx, cellId, 1],
+    }).catch(()=>{});
+  };
 
   useEffect(() => {
     const handler = (e) => {
@@ -325,6 +342,7 @@ export default function Game() {
             characterPosition={characterPosition} 
             characterRotation={characterRotation}
             isWalking={isWalking}
+            onCellClick={handleCellClick}
           />
         </Canvas>
         
