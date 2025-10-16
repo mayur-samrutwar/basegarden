@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
-import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useBalance, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { parseEther } from "viem";
 import { gardenCoreAbi, items1155Abi } from "../lib/abi";
 import {
@@ -167,40 +167,31 @@ export default function Game() {
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
   // Read on-chain seed configs to avoid price/active mismatches
   const seedTypes = [1,2,3];
-  const seedReads = seedTypes.map((t)=> useReadContract({
-    address: gardenCoreAddress,
-    abi: gardenCoreAbi,
-    functionName: 'getSeedConfig',
-    args: [t],
-    chainId,
-    query: { enabled: !!gardenCoreAddress },
-  }));
-  // token ids for ERC1155 seeds derived from on-chain configs
-  const seedTokenIds = seedReads.map(r => (r.data ? Number(r.data.seedTokenId) : undefined));
-  // live ERC1155 balances for each seed type
-  const seedBalances = seedTypes.map((t, idx) => useReadContract({
-    address: items1155Address,
-    abi: items1155Abi,
-    functionName: 'balanceOf',
-    args: (address && typeof seedTokenIds[idx] !== 'undefined') ? [address, BigInt(seedTokenIds[idx])] : undefined,
-    chainId,
-    query: { enabled: !!address && !!items1155Address && typeof seedTokenIds[idx] !== 'undefined', refetchInterval: 4000 },
-  }));
+  const seedCfgContracts = useMemo(() => (
+    gardenCoreAddress ? seedTypes.map((t)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getSeedConfig', args: [t], chainId })) : []
+  ), [gardenCoreAddress, chainId]);
+  const { data: seedCfgData } = useReadContracts({ contracts: seedCfgContracts, query: { enabled: !!gardenCoreAddress } });
   const seedList = useMemo(() => {
     return seedTypes.map((t, idx) => {
-      const d = seedReads[idx].data;
+      const d = seedCfgData && seedCfgData[idx] ? seedCfgData[idx].result : undefined;
       const growDuration = d ? Number(d.growDuration) : 0;
       const buyPriceWei = d ? BigInt(d.buyPriceWei) : 0n;
       const active = d ? Boolean(d.active) : false;
-      return {
-        type: t,
-        name: t===1? 'Carrot' : t===2? 'Mint' : 'Sage',
-        growDuration,
-        buyPriceWei,
-        active,
-      };
+      return { type: t, name: t===1? 'Carrot' : t===2? 'Mint' : 'Sage', growDuration, buyPriceWei, active };
     });
-  }, [seedReads.map(r=>r.data).join('|')]);
+  }, [seedCfgData]);
+  const seedTokenIds = (seedCfgData || []).map((d)=> Number(d?.result?.seedTokenId || 0));
+  const seedBalContracts = useMemo(() => (
+    address && items1155Address ? seedTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(id)], chainId })) : []
+  ), [address, items1155Address, seedTokenIds.join('|'), chainId]);
+  const { data: seedBalData } = useReadContracts({ contracts: seedBalContracts, query: { enabled: !!address && !!items1155Address && seedBalContracts.length>0, refetchInterval: 4000 } });
+  const seedBalances = seedTypes.map((_, idx) => {
+    const id = seedTokenIds[idx] || 0;
+    if (!id) return 0n;
+    const pos = seedTokenIds.filter(n=>n>0).indexOf(id);
+    const entry = seedBalData && seedBalData[pos] ? seedBalData[pos].result : 0n;
+    return typeof entry === 'bigint' ? entry : 0n;
+  });
 
   if (typeof window !== 'undefined') {
     console.debug('[Game] env chainId', chainId);
@@ -209,17 +200,14 @@ export default function Game() {
 
   // Read plot cell states for two visible plots (0 and 1)
   const plotIds = [0, 1];
-  const plotReads = plotIds.map((pid) => useReadContract({
-    address: gardenCoreAddress,
-    abi: gardenCoreAbi,
-    functionName: 'getPlotCells',
-    args: address ? [address, pid] : undefined,
-    chainId,
-    query: { enabled: !!address && !!gardenCoreAddress, refetchInterval: 4000 },
-  }));
-  const plotCells = plotReads.map(r => (
-    Array.from({ length: 12 }, (_, i) => (r.data && typeof r.data[i] !== 'undefined' ? r.data[i] : 0n))
-  ));
+  const plotContracts = useMemo(() => (
+    address && gardenCoreAddress ? plotIds.map((pid)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getPlotCells', args: [address, pid], chainId })) : []
+  ), [address, gardenCoreAddress, chainId]);
+  const { data: plotData, refetch: refetchPlots } = useReadContracts({ contracts: plotContracts, query: { enabled: !!address && !!gardenCoreAddress, refetchInterval: 4000 } });
+  const plotCells = (plotData || []).map((entry) => {
+    const arr = entry?.result || [];
+    return Array.from({ length: 12 }, (_, i) => (typeof arr[i] !== 'undefined' ? arr[i] : 0n));
+  });
   if (typeof window !== 'undefined') {
     console.debug('[Game] plotCells', plotCells);
   }
@@ -251,7 +239,7 @@ export default function Game() {
         functionName: 'harvest',
         args: [plotIdx, cellId],
       }).then(()=>{
-        plotReads.forEach(r => r.refetch?.());
+        refetchPlots?.();
         setTimeout(()=> setHarvestingCell(null), 800);
       }).catch(()=>{
         setHarvestingCell(null);
@@ -279,7 +267,7 @@ export default function Game() {
       functionName: 'plant',
       args: [plotIdx, cellId, selectedSeedType],
     }).then(()=>{
-      plotReads.forEach(r => r.refetch?.());
+      refetchPlots?.();
       setTimeout(()=> setPlantingCell(null), 1200);
     }).catch(()=>{
       setPlantingCell(null);

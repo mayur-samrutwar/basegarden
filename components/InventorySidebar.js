@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContracts } from "wagmi";
 import { items1155Abi } from "../lib/abi";
 
 export default function InventorySidebar({ items1155Address, seeds, selectedSeedType, onSelectSeed }) {
@@ -7,23 +7,14 @@ export default function InventorySidebar({ items1155Address, seeds, selectedSeed
   const [open, setOpen] = useState(false);
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
 
-  const balances = seeds.map(({ seedTokenId, cropTokenId }) => ({
-    seed: useReadContract({
-      address: items1155Address,
-      abi: items1155Abi,
-      functionName: "balanceOf",
-      args: address ? [address, BigInt(seedTokenId)] : undefined,
-      chainId,
-      query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 },
-    }).data || 0n,
-    crop: useReadContract({
-      address: items1155Address,
-      abi: items1155Abi,
-      functionName: "balanceOf",
-      args: address ? [address, BigInt(cropTokenId)] : undefined,
-      chainId,
-      query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 },
-    }).data || 0n,
+  const contracts = (address && items1155Address) ? seeds.flatMap(({ seedTokenId, cropTokenId }) => ([
+    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(seedTokenId)], chainId },
+    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(cropTokenId)], chainId },
+  ])) : [];
+  const { data } = useReadContracts({ contracts, query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 } });
+  const balances = seeds.map((_, i) => ({
+    seed: data && data[i*2] ? (data[i*2].result || 0n) : 0n,
+    crop: data && data[i*2+1] ? (data[i*2+1].result || 0n) : 0n,
   }));
 
   if (typeof window !== 'undefined') {

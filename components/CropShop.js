@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useReadContracts, useWriteContract } from "wagmi";
 import { gardenCoreAbi, items1155Abi } from "../lib/abi";
 
 export default function CropShop({ open, onClose, gardenCoreAddress, items1155Address, seedTypes = [1,2,3] }) {
@@ -11,28 +11,17 @@ export default function CropShop({ open, onClose, gardenCoreAddress, items1155Ad
   const [submitting, setSubmitting] = useState(false);
 
   // read on-chain configs for names and prices
-  const cfgReads = seedTypes.map((t)=> useReadContract({
-    address: gardenCoreAddress,
-    abi: gardenCoreAbi,
-    functionName: 'getSeedConfig',
-    args: [t],
-    chainId,
-    query: { enabled: !!gardenCoreAddress },
-  }));
-  const cfgs = seedTypes.map((t, i) => cfgReads[i].data);
-  const tokenIds = cfgs.map((d)=> d ? Number(d.cropTokenId) : undefined);
-  const balances = tokenIds.map((id)=> useReadContract({
-    address: items1155Address,
-    abi: items1155Abi,
-    functionName: 'balanceOf',
-    args: (address && typeof id !== 'undefined') ? [address, BigInt(id)] : undefined,
-    chainId,
-    query: { enabled: !!address && !!items1155Address && typeof id !== 'undefined', refetchInterval: 4000 },
-  }));
+  const cfgContracts = (gardenCoreAddress ? seedTypes.map((t)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getSeedConfig', args: [t], chainId })) : []);
+  const { data: cfgData } = useReadContracts({ contracts: cfgContracts, query: { enabled: !!gardenCoreAddress } });
+  const cropTokenIds = (cfgData || []).map((d)=> Number(d?.result?.cropTokenId || 0));
+  const balContracts = (address && items1155Address ? cropTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(id)], chainId })) : []);
+  const { data: balData } = useReadContracts({ contracts: balContracts, query: { enabled: !!address && !!items1155Address && balContracts.length>0, refetchInterval: 4000 } });
 
   const items = seedTypes.map((t, i) => {
-    const d = cfgs[i];
-    const bal = balances[i].data || 0n;
+    const d = cfgData && cfgData[i] ? cfgData[i].result : undefined;
+    const id = cropTokenIds[i] || 0;
+    const pos = cropTokenIds.filter(n=>n>0).indexOf(id);
+    const bal = pos>=0 && balData && balData[pos] ? (balData[pos].result || 0n) : 0n;
     return {
       type: t,
       name: t===1?'Carrot': t===2?'Mint':'Sage',
