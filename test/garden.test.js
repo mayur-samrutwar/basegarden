@@ -8,12 +8,20 @@ describe("GardenCore", function () {
     const Items = await ethers.getContractFactory("Items1155");
     const items = await Items.deploy("");
 
+    const Token = await ethers.getContractFactory("GardenToken");
+    const token = await Token.deploy();
+
     const Garden = await ethers.getContractFactory("GardenCore");
     const garden = await Garden.deploy(await items.getAddress(), 12);
 
     // grant roles to garden
     await items.setMinter(await garden.getAddress(), true);
     await items.setBurner(await garden.getAddress(), true);
+
+    await garden.setGardenToken(await token.getAddress());
+    // fund garden with GARDEN for rewards (owner mints to contract)
+    await token.setMinter(owner.address, true);
+    await token.mint(await garden.getAddress(), ethers.parseEther("1000000"));
 
     // define plot defs (0 and 1 free/available; 2 paid)
     await garden.setPlotDef(0, 0, 0, 1, 1, 0, true);
@@ -31,7 +39,7 @@ describe("GardenCore", function () {
       active: true,
     });
 
-    return { owner, player, items, garden };
+    return { owner, player, items, garden, token };
   }
 
   it("buys seeds with exact value and mints", async () => {
@@ -84,8 +92,8 @@ describe("GardenCore", function () {
     expect(packedAfter).to.equal(0);
   });
 
-  it("sells crops and gets paid", async () => {
-    const { garden, items } = await deploy();
+  it("sells crops and gets $GARDEN reward", async () => {
+    const { garden, items, token } = await deploy();
     const [owner] = await ethers.getSigners();
     await garden.buySeeds(1, 1, { value: ethers.parseEther("0.001") });
     await garden.plant(0, 1);
@@ -93,14 +101,10 @@ describe("GardenCore", function () {
     await ethers.provider.send("evm_mine", []);
     await garden.harvest(0);
 
-    const balBefore = await ethers.provider.getBalance(owner.address);
-    const tx = await garden.sellCrops(1, 1);
-    const receipt = await tx.wait();
-    const gas = receipt?.fee ?? 0n;
-    const balAfter = await ethers.provider.getBalance(owner.address);
-    const expected = balBefore - gas + ethers.parseEther("0.0005");
-    expect(balAfter).to.equal(expected);
-
+    const gardenBefore = await token.balanceOf(owner.address);
+    await garden.sellCrops(1, 1);
+    const gardenAfter = await token.balanceOf(owner.address);
+    expect(gardenAfter - gardenBefore).to.equal(ethers.parseEther("0.0005"));
     expect(await items.balanceOf(owner.address, 2001)).to.equal(0);
   });
 

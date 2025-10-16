@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {PlotCodec} from "./PlotCodec.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IItems1155 is IERC1155 {
     function mint(address to, uint256 id, uint256 amount, bytes memory data) external;
@@ -39,7 +40,7 @@ contract GardenCore is Ownable, ReentrancyGuard {
     event SeedsPurchased(address indexed player, uint16 indexed seedType, uint256 qty, uint256 value);
     event Planted(address indexed player, uint16 indexed plotId, uint16 seedType, uint64 plantedAt);
     event Harvested(address indexed player, uint16 indexed plotId, uint16 seedType, uint64 harvestedAt);
-    event CropsSold(address indexed player, uint16 indexed seedType, uint256 qty, uint256 value);
+    event CropsSold(address indexed player, uint16 indexed seedType, uint256 qty, uint256 rewardGarden);
     event SeedConfigUpdated(uint16 indexed seedType, SeedConfig cfg);
     event PlotsPerPlayerUpdated(uint16 plots);
     event Items1155Updated(address items1155);
@@ -48,6 +49,7 @@ contract GardenCore is Ownable, ReentrancyGuard {
 
     // storage
     IItems1155 public items1155;
+    IERC20 public gardenToken;
     // Total number of plot definitions available in the fixed play area (global bound)
     uint16 public plotCount;
     mapping(uint16 => SeedConfig) public seedConfigs;
@@ -149,14 +151,14 @@ contract GardenCore is Ownable, ReentrancyGuard {
         if (qty == 0) revert InvalidQuantity();
         SeedConfig memory cfg = seedConfigs[seedType];
         if (!cfg.active) revert InactiveSeed();
-        uint256 payout = uint256(cfg.sellPriceWei) * qty;
-
-        // burn first, then pay
+        // burn crops
         items1155.burn(msg.sender, uint256(cfg.cropTokenId), qty);
-
-        (bool ok, ) = payable(msg.sender).call{value: payout}("");
-        if (!ok) revert TransferFailed();
-        emit CropsSold(msg.sender, seedType, qty, payout);
+        // reward in GARDEN at 1e18 units per wei of sellPriceWei by default
+        uint256 reward = uint256(cfg.sellPriceWei) * qty; // treat sellPriceWei as reward baseline
+        require(address(gardenToken) != address(0), "garden token not set");
+        bool ok = gardenToken.transfer(msg.sender, reward);
+        require(ok, "garden transfer failed");
+        emit CropsSold(msg.sender, seedType, qty, reward);
     }
 
     // purchasing plots (per-player unlock)
@@ -196,6 +198,10 @@ contract GardenCore is Ownable, ReentrancyGuard {
     function setItems1155(address newAddr) external onlyOwner {
         items1155 = IItems1155(newAddr);
         emit Items1155Updated(newAddr);
+    }
+
+    function setGardenToken(address newAddr) external onlyOwner {
+        gardenToken = IERC20(newAddr);
     }
 
     function withdraw(address payable to, uint256 amount) external onlyOwner {

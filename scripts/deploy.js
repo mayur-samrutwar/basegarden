@@ -13,6 +13,13 @@ async function main() {
   const itemsAddress = await items.getAddress();
   console.log("Items1155:", itemsAddress);
 
+  // Deploy GardenToken (ERC20 $GARDEN)
+  const Token = await ethers.getContractFactory("GardenToken");
+  const token = await Token.deploy();
+  await token.waitForDeployment();
+  const tokenAddress = await token.getAddress();
+  console.log("GardenToken:", tokenAddress);
+
   // Deploy GardenCore with plotCount=12
   const Garden = await ethers.getContractFactory("GardenCore");
   const garden = await Garden.deploy(itemsAddress, 12);
@@ -23,6 +30,11 @@ async function main() {
   // Grant roles
   await (await items.setMinter(gardenAddress, true)).wait();
   await (await items.setBurner(gardenAddress, true)).wait();
+
+  // Wire GardenToken and fund rewards
+  await (await garden.setGardenToken(tokenAddress)).wait();
+  await (await token.setMinter(deployer.address, true)).wait();
+  await (await token.mint(gardenAddress, ethers.parseEther("1000000"))).wait();
 
   // Configure example plots (0,1 free; 2 priced)
   await (await garden.setPlotDef(0, 0, 0, 1, 1, 0, true)).wait();
@@ -48,6 +60,7 @@ async function main() {
     NEXT_PUBLIC_CHAIN_ID: chainId,
     NEXT_PUBLIC_ITEMS1155_ADDRESS: itemsAddress,
     NEXT_PUBLIC_GARDENCORE_ADDRESS: gardenAddress,
+    NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS: tokenAddress,
   };
   writeEnv(envPath, updates);
   console.log(".env updated at", envPath);

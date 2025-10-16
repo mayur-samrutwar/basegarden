@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import {
   ConnectWallet,
@@ -14,6 +14,8 @@ import CameraController from "../components/CameraController";
 import GrassField from "../components/GrassField";
 import Shop from "../components/Shop";
 import Shop2 from "../components/Shop2";
+import ProximityHint from "../components/ProximityHint";
+import SeedMarketplace from "../components/SeedMarketplace";
 
 function GardenScene({ characterPosition, characterRotation, isWalking }) {
   return (
@@ -135,6 +137,15 @@ export default function Game() {
   const [characterRotation, setCharacterRotation] = useState(0);
   const [keys, setKeys] = useState({ w: false, s: false, a: false, d: false, q: false, e: false });
   const [isWalking, setIsWalking] = useState(false);
+  const [nearSeedShop, setNearSeedShop] = useState(false);
+  const [marketOpen, setMarketOpen] = useState(false);
+
+  const seedShop = useMemo(() => ({ x: 8, z: 15, width: 3.4, depth: 6.4 }), []);
+  const seedList = useMemo(() => ([
+    { type: 1, name: 'Carrot', growDuration: 60, priceEth: '0.001' },
+    { type: 2, name: 'Mint', growDuration: 10, priceEth: '0.001' },
+    { type: 3, name: 'Sage', growDuration: 20, priceEth: '0.0015' },
+  ]), []);
 
   useEffect(() => {
     setMounted(true);
@@ -153,6 +164,9 @@ export default function Game() {
       if (['w', 's', 'a', 'd', 'q', 'e'].includes(key)) {
         setKeys(prev => ({ ...prev, [key]: true }));
       }
+      if (key === 'p' && nearSeedShop) {
+        setMarketOpen(true);
+      }
     };
 
     const handleKeyUp = (event) => {
@@ -169,7 +183,7 @@ export default function Game() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [nearSeedShop]);
 
   // Smoother movement loop with reduced frequency
   useEffect(() => {
@@ -201,11 +215,12 @@ export default function Game() {
         
         // Shop collision detection for both shops (rotated 90 degrees)
         const shops = [
-          { x: 8, z: 15, width: 3.4, depth: 6.4 }, // Rotated: width/depth swapped
-          { x: -8, z: 15, width: 3.4, depth: 6.4 }
+          { x: 8, z: 15, width: 3.4, depth: 6.4 }, // seed shop
+          { x: -8, z: 15, width: 3.4, depth: 6.4 } // other shop
         ];
         
         // Check collision with each shop
+        let nearSeed = false;
         for (const shop of shops) {
           const insideShopX = newX >= shop.x - shop.width/2 && newX <= shop.x + shop.width/2;
           const insideShopZ = newZ >= shop.z - shop.depth/2 && newZ <= shop.z + shop.depth/2;
@@ -216,7 +231,13 @@ export default function Game() {
             newZ = z;
             break;
           }
+          // proximity check (within 2 units) to seed shop only
+          const dx = newX - seedShop.x;
+          const dz = newZ - seedShop.z;
+          const dist = Math.sqrt(dx*dx + dz*dz);
+          if (dist < 2.2) nearSeed = true;
         }
+        setNearSeedShop(nearSeed);
         
         // Boundary collision - keep character inside garden
         newX = Math.max(-gardenSize, Math.min(gardenSize, newX));
@@ -279,6 +300,12 @@ export default function Game() {
         <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded">
           <p className="text-sm">WASD: Move | Q/E: Turn</p>
         </div>
+
+        {/* Seed shop proximity hint */}
+        <ProximityHint visible={nearSeedShop && !marketOpen} text="Press P to open Seed Shop" />
+
+        {/* Seed marketplace modal */}
+        <SeedMarketplace open={marketOpen} onClose={()=>setMarketOpen(false)} seeds={seedList} />
       </main>
     </div>
   );

@@ -10,7 +10,8 @@
     "compile:contracts": "hardhat compile",
     "test:contracts": "hardhat test",
     "chain": "hardhat node",
-    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "config:seeds": "hardhat run scripts/configSeeds.js --network localhost"
   },
   "dependencies": {
     "@coinbase/onchainkit": "^1.1.1",
@@ -28,6 +29,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
     "eslint": "^9",
     "eslint-config-next": "15.5.5",
     "hardhat": "^2.22.10",
