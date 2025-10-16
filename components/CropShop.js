@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useAccount, useReadContracts, useWriteContract } from "wagmi";
 import { gardenCoreAbi, items1155Abi } from "../lib/abi";
+import { useNotificationActions } from "./NotificationSystem";
 
 export default function CropShop({ open, onClose, gardenCoreAddress, items1155Address, seedTypes = [1,2,3] }) {
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const { showLoading, showSuccess, showError } = useNotificationActions();
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState(1);
@@ -65,6 +67,7 @@ export default function CropShop({ open, onClose, gardenCoreAddress, items1155Ad
               if (!selected) return;
               try {
                 setSubmitting(true);
+                showLoading(`Selling ${qty} ${selected.name} crops...`);
                 console.debug('[CropShop] sell click', { seedType: selected.type, qty });
                 await writeContractAsync({
                   address: gardenCoreAddress,
@@ -73,10 +76,11 @@ export default function CropShop({ open, onClose, gardenCoreAddress, items1155Ad
                   args: [selected.type, BigInt(qty)],
                   chainId,
                 });
+                showSuccess(`${qty} ${selected.name} crops sold successfully!`);
                 onClose?.();
               } catch (e) {
                 console.error('[CropShop] sell failed', e);
-                window.alert('Sell failed. Check console for details.');
+                showError('Failed to sell crops. Please try again.');
               } finally {
                 setSubmitting(false);
               }

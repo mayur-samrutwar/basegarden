@@ -22,6 +22,7 @@ import SeedMarketplace from "../components/SeedMarketplace";
 import CropShop from "../components/CropShop";
 import HUD from "../components/HUD";
 import InventorySidebar from "../components/InventorySidebar";
+import { useNotificationActions } from "../components/NotificationSystem";
 
 function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick, hovered, setHovered, plantingCell, plotCells, cellInfo }) {
   return (
@@ -144,6 +145,7 @@ function GardenScene({ characterPosition, characterRotation, isWalking, onCellCl
 export default function Game() {
   const router = useRouter();
   const { isConnected, isConnecting, address } = useAccount();
+  const { showLoading, showSuccess, showError, showInfo } = useNotificationActions();
   const [mounted, setMounted] = useState(false);
   const [characterPosition, setCharacterPosition] = useState([0, 0, 0]);
   const [characterRotation, setCharacterRotation] = useState(0);
@@ -196,6 +198,9 @@ export default function Game() {
   if (typeof window !== 'undefined') {
     console.debug('[Game] env chainId', chainId);
     console.debug('[Game] addresses', { gardenCoreAddress, items1155Address, gardenTokenAddress });
+    console.debug('[Game] seedBalances', seedBalances);
+    console.debug('[Game] seedTokenIds', seedTokenIds);
+    console.debug('[Game] seedBalData', seedBalData);
   }
 
   // Read plot cell states for two visible plots (0 and 1)
@@ -233,6 +238,7 @@ export default function Game() {
     // If occupied and ready -> harvest
     if (isOccupied && info && info.ready) {
       setHarvestingCell({ plotIdx, cellId });
+      showLoading('Harvesting your crop...');
       writeContractAsync({
         address: gardenCoreAddress,
         abi: gardenCoreAbi,
@@ -240,8 +246,11 @@ export default function Game() {
         args: [plotIdx, cellId],
       }).then(()=>{
         refetchPlots?.();
+        showSuccess('Crop harvested successfully!');
         setTimeout(()=> setHarvestingCell(null), 800);
-      }).catch(()=>{
+      }).catch((error) => {
+        console.error('Harvest failed:', error);
+        showError('Failed to harvest crop. Please try again.');
         setHarvestingCell(null);
       });
       return;
@@ -252,15 +261,19 @@ export default function Game() {
 
     // Planting flow (empty cell): must have seed selected and balance > 0
     if (!selectedSeedType) {
-      window.alert('Select a seed in the inventory first');
+      showInfo('Select a seed in the inventory first');
       return;
     }
     const selIdx = seedTypes.indexOf(selectedSeedType);
-    const balData = selIdx >= 0 ? seedBalances[selIdx]?.data : undefined;
-    const seedQty = typeof balData === 'bigint' ? balData : 0n;
-    if (seedQty === 0n) return;
+    const seedQty = selIdx >= 0 ? seedBalances[selIdx] : 0n;
+    if (seedQty === 0n) {
+      showInfo('You need seeds to plant. Buy some from the shop first.');
+      return;
+    }
 
     setPlantingCell({ plotIdx, cellId });
+    const seedName = seedList.find(s => s.type === selectedSeedType)?.name || 'seed';
+    showLoading(`Planting ${seedName}...`);
     writeContractAsync({
       address: gardenCoreAddress,
       abi: gardenCoreAbi,
@@ -268,8 +281,11 @@ export default function Game() {
       args: [plotIdx, cellId, selectedSeedType],
     }).then(()=>{
       refetchPlots?.();
+      showSuccess(`${seedName} planted successfully!`);
       setTimeout(()=> setPlantingCell(null), 1200);
-    }).catch(()=>{
+    }).catch((error) => {
+      console.error('Planting failed:', error);
+      showError('Failed to plant seed. Please try again.');
       setPlantingCell(null);
     });
   };
@@ -282,11 +298,12 @@ export default function Game() {
       const seed = seedList.find(s => s.type === seedType);
       if (!seed) return;
       if (!seed.active) {
-        window.alert('This seed is not available');
+        showError('This seed is not available');
         return;
       }
       // call buySeeds with exact msg.value from on-chain price
       const value = (seed.buyPriceWei || 0n) * BigInt(qty);
+      showLoading(`Buying ${qty} ${seed.name} seeds...`);
       writeContractAsync({
         address: gardenCoreAddress,
         abi: gardenCoreAbi,
@@ -296,9 +313,11 @@ export default function Game() {
         chainId,
       }).then(()=>{
         setMarketOpen(false);
-        // naive feedback
-        window.alert('Purchase sent. Check wallet and inventory.');
-      }).catch(()=>{});
+        showSuccess('Seeds purchased successfully!');
+      }).catch((error) => {
+        console.error('Purchase failed:', error);
+        showError('Transaction failed. Please try again.');
+      });
     };
     window.addEventListener('seed:buy', handler);
     return () => window.removeEventListener('seed:buy', handler);
