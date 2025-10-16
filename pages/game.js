@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
 import { parseEther } from "viem";
-import { gardenCoreAbi } from "../lib/abi";
+import { gardenCoreAbi, items1155Abi } from "../lib/abi";
 import {
   ConnectWallet,
   Wallet,
@@ -22,7 +22,7 @@ import SeedMarketplace from "../components/SeedMarketplace";
 import HUD from "../components/HUD";
 import InventorySidebar from "../components/InventorySidebar";
 
-function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick }) {
+function GardenScene({ characterPosition, characterRotation, isWalking, onCellClick, hovered, setHovered, plantingCell, plotCells }) {
   return (
     <>
       {/* More Blue Sky */}
@@ -115,7 +115,7 @@ function GardenScene({ characterPosition, characterRotation, isWalking, onCellCl
       />
 
       {/* Initial free plots (2) rendered as soil */}
-      <Plots onCellClick={onCellClick} plots={[
+      <Plots onCellClick={onCellClick} hovered={hovered} setHovered={setHovered} plantingCell={plantingCell} plotCells={plotCells} plots={[
         { x: -5, z: 0, width: 4, depth: 4 },
         { x: -0.5, z: 0, width: 4, depth: 4 },
       ]} />
@@ -142,7 +142,7 @@ function GardenScene({ characterPosition, characterRotation, isWalking, onCellCl
 
 export default function Game() {
   const router = useRouter();
-  const { isConnected, isConnecting } = useAccount();
+  const { isConnected, isConnecting, address } = useAccount();
   const [mounted, setMounted] = useState(false);
   const [characterPosition, setCharacterPosition] = useState([0, 0, 0]);
   const [characterRotation, setCharacterRotation] = useState(0);
@@ -150,33 +150,107 @@ export default function Game() {
   const [isWalking, setIsWalking] = useState(false);
   const [nearSeedShop, setNearSeedShop] = useState(false);
   const [marketOpen, setMarketOpen] = useState(false);
+  const [hovered, setHovered] = useState(null);
+  const [plantingCell, setPlantingCell] = useState(null);
+  const [selectedSeedType, setSelectedSeedType] = useState(null);
 
   const seedShop = useMemo(() => ({ x: 8, z: 15, width: 3.4, depth: 6.4 }), []);
-  const seedList = useMemo(() => ([
-    { type: 1, name: 'Carrot', growDuration: 60, priceEth: '0.001' },
-    { type: 2, name: 'Mint', growDuration: 10, priceEth: '0.001' },
-    { type: 3, name: 'Sage', growDuration: 20, priceEth: '0.0015' },
-  ]), []);
-
+  // Addresses and chain must be declared before any reads below
   const gardenCoreAddress = process.env.NEXT_PUBLIC_GARDENCORE_ADDRESS;
   const items1155Address = process.env.NEXT_PUBLIC_ITEMS1155_ADDRESS;
   const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
   const { writeContractAsync } = useWriteContract();
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
+  // Read on-chain seed configs to avoid price/active mismatches
+  const seedTypes = [1,2,3];
+  const seedReads = seedTypes.map((t)=> useReadContract({
+    address: gardenCoreAddress,
+    abi: gardenCoreAbi,
+    functionName: 'getSeedConfig',
+    args: [t],
+    chainId,
+    query: { enabled: !!gardenCoreAddress },
+  }));
+  // token ids for ERC1155 seeds derived from on-chain configs
+  const seedTokenIds = seedReads.map(r => (r.data ? Number(r.data.seedTokenId) : undefined));
+  // live ERC1155 balances for each seed type
+  const seedBalances = seedTypes.map((t, idx) => useReadContract({
+    address: items1155Address,
+    abi: items1155Abi,
+    functionName: 'balanceOf',
+    args: (address && typeof seedTokenIds[idx] !== 'undefined') ? [address, BigInt(seedTokenIds[idx])] : undefined,
+    chainId,
+    query: { enabled: !!address && !!items1155Address && typeof seedTokenIds[idx] !== 'undefined', refetchInterval: 4000 },
+  }));
+  const seedList = useMemo(() => {
+    return seedTypes.map((t, idx) => {
+      const d = seedReads[idx].data;
+      const growDuration = d ? Number(d.growDuration) : 0;
+      const buyPriceWei = d ? BigInt(d.buyPriceWei) : 0n;
+      const active = d ? Boolean(d.active) : false;
+      return {
+        type: t,
+        name: t===1? 'Carrot' : t===2? 'Mint' : 'Sage',
+        growDuration,
+        buyPriceWei,
+        active,
+      };
+    });
+  }, [seedReads.map(r=>r.data).join('|')]);
 
   if (typeof window !== 'undefined') {
     console.debug('[Game] env chainId', chainId);
     console.debug('[Game] addresses', { gardenCoreAddress, items1155Address, gardenTokenAddress });
   }
+
+  // Read plot cell states for two visible plots (0 and 1)
+  const plotIds = [0, 1];
+  const plotReads = plotIds.map((pid) => useReadContract({
+    address: gardenCoreAddress,
+    abi: gardenCoreAbi,
+    functionName: 'getPlotCells',
+    args: address ? [address, pid] : undefined,
+    chainId,
+    query: { enabled: !!address && !!gardenCoreAddress, refetchInterval: 4000 },
+  }));
+  const plotCells = plotReads.map(r => (
+    Array.from({ length: 12 }, (_, i) => (r.data && typeof r.data[i] !== 'undefined' ? r.data[i] : 0n))
+  ));
+  if (typeof window !== 'undefined') {
+    console.debug('[Game] plotCells', plotCells);
+  }
   const handleCellClick = (plotIdx, cellId) => {
-    // Example: attempt to plant Carrot (1) when clicking a cell
     if (!gardenCoreAddress) return;
+    if (!selectedSeedType) {
+      window.alert('Select a seed in the inventory first');
+      return;
+    }
+    // ensure player has at least 1 seed of the selected type before attempting on-chain call
+    const selIdx = seedTypes.indexOf(selectedSeedType);
+    const balData = selIdx >= 0 ? seedBalances[selIdx]?.data : undefined;
+    const seedQty = typeof balData === 'bigint' ? balData : 0n;
+    if (seedQty === 0n) {
+      // no-op: avoid contract revert and unnecessary transaction
+      return;
+    }
+    // prevent planting if occupied
+    const occupied = plotCells[plotIdx] && (plotCells[plotIdx][cellId] ?? 0n) !== 0n;
+    if (occupied) {
+      return;
+    }
+    setPlantingCell({ plotIdx, cellId });
     writeContractAsync({
       address: gardenCoreAddress,
       abi: gardenCoreAbi,
       functionName: 'plant',
-      args: [plotIdx, cellId, 1],
-    }).catch(()=>{});
+      args: [plotIdx, cellId, selectedSeedType],
+    }).then(()=>{
+      // refresh plot reads immediately
+      plotReads.forEach(r => r.refetch?.());
+      setTimeout(()=> setPlantingCell(null), 1200);
+    }).catch(()=>{
+      setPlantingCell(null);
+    });
   };
 
   useEffect(() => {
@@ -186,8 +260,12 @@ export default function Game() {
       if (!gardenCoreAddress) return;
       const seed = seedList.find(s => s.type === seedType);
       if (!seed) return;
-      // call buySeeds with msg.value
-      const value = parseEther(seed.priceEth) * BigInt(qty);
+      if (!seed.active) {
+        window.alert('This seed is not available');
+        return;
+      }
+      // call buySeeds with exact msg.value from on-chain price
+      const value = (seed.buyPriceWei || 0n) * BigInt(qty);
       writeContractAsync({
         address: gardenCoreAddress,
         abi: gardenCoreAbi,
@@ -353,6 +431,10 @@ export default function Game() {
             characterRotation={characterRotation}
             isWalking={isWalking}
             onCellClick={handleCellClick}
+            hovered={hovered}
+            setHovered={setHovered}
+            plantingCell={plantingCell}
+            plotCells={plotCells}
           />
         </Canvas>
         
@@ -371,7 +453,7 @@ export default function Game() {
         <HUD gardenTokenAddress={gardenTokenAddress} />
 
         {/* Inventory Sidebar */}
-        <InventorySidebar items1155Address={items1155Address} seeds={[
+        <InventorySidebar items1155Address={items1155Address} selectedSeedType={selectedSeedType} onSelectSeed={setSelectedSeedType} seeds={[
           { type:1, name:'Carrot', growDuration:60, seedTokenId:1001, cropTokenId:2001 },
           { type:2, name:'Mint', growDuration:10, seedTokenId:1002, cropTokenId:2002 },
           { type:3, name:'Sage', growDuration:20, seedTokenId:1003, cropTokenId:2003 },
