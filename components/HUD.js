@@ -18,6 +18,12 @@ export default function HUD({ gardenTokenAddress }) {
   const ethDisplay = ethBal ? Number(ethBal.formatted).toFixed(2) : "0.00";
   const gardenDisplay = gardenBal ? (Number(gardenBal) / 1e18).toFixed(2) : "0.00";
 
+  if (typeof window !== 'undefined') {
+    console.debug('[HUD] chainId', chainId, 'address', address);
+    console.debug('[HUD] ETH balance raw', ethBal);
+    console.debug('[HUD] Garden token addr', gardenTokenAddress, 'balance raw', gardenBal);
+  }
+
   return (
     <div className="absolute top-4 left-4 z-50">
       <div className="bg-black/60 backdrop-blur text-white rounded-full px-5 py-2 shadow flex items-center gap-4">

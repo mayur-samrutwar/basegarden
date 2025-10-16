@@ -26,6 +26,12 @@ export default function InventorySidebar({ items1155Address, seeds }) {
     }).data || 0n,
   }));
 
+  if (typeof window !== 'undefined') {
+    console.debug('[Inventory] chainId', chainId, 'player', address, 'items1155', items1155Address);
+    console.debug('[Inventory] seeds', seeds);
+    console.debug('[Inventory] raw balances', balances);
+  }
+
   return (
     <>
       <button

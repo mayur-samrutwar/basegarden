@@ -163,6 +163,11 @@ export default function Game() {
   const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
   const { writeContractAsync } = useWriteContract();
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
+
+  if (typeof window !== 'undefined') {
+    console.debug('[Game] env chainId', chainId);
+    console.debug('[Game] addresses', { gardenCoreAddress, items1155Address, gardenTokenAddress });
+  }
   const handleCellClick = (plotIdx, cellId) => {
     // Example: attempt to plant Carrot (1) when clicking a cell
     if (!gardenCoreAddress) return;
