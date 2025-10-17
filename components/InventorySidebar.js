@@ -1,24 +1,23 @@
 import { useState } from "react";
-import { useAccount, useReadContracts } from "wagmi";
+import { useReadContracts } from "wagmi";
 import { items1155Abi } from "../lib/abi";
 
-export default function InventorySidebar({ items1155Address, seeds, selectedSeedType, onSelectSeed }) {
-  const { address } = useAccount();
+export default function InventorySidebar({ items1155Address, seeds, selectedSeedType, onSelectSeed, accountAddress }) {
   const [open, setOpen] = useState(false);
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
 
-  const contracts = (address && items1155Address) ? seeds.flatMap(({ seedTokenId, cropTokenId }) => ([
-    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(seedTokenId)], chainId },
-    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(cropTokenId)], chainId },
+  const contracts = (accountAddress && items1155Address) ? seeds.flatMap(({ seedTokenId, cropTokenId }) => ([
+    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [accountAddress, BigInt(seedTokenId || 0)], chainId },
+    { address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [accountAddress, BigInt(cropTokenId || 0)], chainId },
   ])) : [];
-  const { data } = useReadContracts({ contracts, query: { enabled: !!address && !!items1155Address, refetchInterval: 3000 } });
+  const { data } = useReadContracts({ contracts, query: { enabled: !!accountAddress && !!items1155Address, refetchInterval: 3000 } });
   const balances = seeds.map((_, i) => ({
     seed: data && data[i*2] ? (data[i*2].result || 0n) : 0n,
     crop: data && data[i*2+1] ? (data[i*2+1].result || 0n) : 0n,
   }));
 
   if (typeof window !== 'undefined') {
-    console.debug('[Inventory] chainId', chainId, 'player', address, 'items1155', items1155Address);
+    console.debug('[Inventory] chainId', chainId, 'player', accountAddress, 'items1155', items1155Address);
     console.debug('[Inventory] seeds', seeds);
     console.debug('[Inventory] raw balances', balances);
   }

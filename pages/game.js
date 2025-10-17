@@ -1,7 +1,9 @@
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
-import { useAccount, useBalance, useReadContract, useReadContracts, useWriteContract } from "wagmi";
-import { parseEther } from "viem";
+import { useAccount, useBalance, useReadContract, useReadContracts, useWriteContract, useDisconnect } from "wagmi";
+import { encodeFunctionData } from "viem";
+import { createBaseAccountSDK } from "@base-org/account";
+import { base, baseSepolia } from "viem/chains";
 import { gardenCoreAbi, items1155Abi } from "../lib/abi";
 import {
   ConnectWallet,
@@ -146,7 +148,11 @@ export default function Game() {
   const router = useRouter();
   const { isConnected, isConnecting, address } = useAccount();
   const { showLoading, showSuccess, showError, showInfo } = useNotificationActions();
+  const { disconnect } = useDisconnect();
   const [mounted, setMounted] = useState(false);
+  const [provider, setProvider] = useState(null);
+  const [universalAddress, setUniversalAddress] = useState("");
+  const [subAccountAddress, setSubAccountAddress] = useState("");
   const [characterPosition, setCharacterPosition] = useState([0, 0, 0]);
   const [characterRotation, setCharacterRotation] = useState(0);
   const [keys, setKeys] = useState({ w: false, s: false, a: false, d: false, q: false, e: false });
@@ -167,6 +173,8 @@ export default function Game() {
   const gardenTokenAddress = process.env.NEXT_PUBLIC_GARDEN_TOKEN_ADDRESS;
   const { writeContractAsync } = useWriteContract();
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
+  const chainHex = `0x${chainId.toString(16)}`;
+  const isSepolia = chainId === 84532;
   // Read on-chain seed configs to avoid price/active mismatches
   const seedTypes = [1,2,3];
   const seedCfgContracts = useMemo(() => (
@@ -179,13 +187,16 @@ export default function Game() {
       const growDuration = d ? Number(d.growDuration) : 0;
       const buyPriceWei = d ? BigInt(d.buyPriceWei) : 0n;
       const active = d ? Boolean(d.active) : false;
-      return { type: t, name: t===1? 'Carrot' : t===2? 'Mint' : 'Sage', growDuration, buyPriceWei, active };
+      const seedTokenId = d ? Number(d.seedTokenId) : 0;
+      const cropTokenId = d ? Number(d.cropTokenId) : 0;
+      return { type: t, name: t===1? 'Carrot' : t===2? 'Mint' : 'Sage', growDuration, buyPriceWei, active, seedTokenId, cropTokenId };
     });
   }, [seedCfgData]);
   const seedTokenIds = (seedCfgData || []).map((d)=> Number(d?.result?.seedTokenId || 0));
+  const accountForReads = subAccountAddress || address;
   const seedBalContracts = useMemo(() => (
-    address && items1155Address ? seedTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(id)], chainId })) : []
-  ), [address, items1155Address, seedTokenIds.join('|'), chainId]);
+    accountForReads && items1155Address ? seedTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [accountForReads, BigInt(id)], chainId })) : []
+  ), [accountForReads, items1155Address, seedTokenIds.join('|'), chainId]);
   const { data: seedBalData } = useReadContracts({ contracts: seedBalContracts, query: { enabled: !!address && !!items1155Address && seedBalContracts.length>0, refetchInterval: 4000 } });
   const seedBalances = seedTypes.map((_, idx) => {
     const id = seedTokenIds[idx] || 0;
@@ -206,8 +217,8 @@ export default function Game() {
   // Read plot cell states for two visible plots (0 and 1)
   const plotIds = [0, 1];
   const plotContracts = useMemo(() => (
-    address && gardenCoreAddress ? plotIds.map((pid)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getPlotCells', args: [address, pid], chainId })) : []
-  ), [address, gardenCoreAddress, chainId]);
+    accountForReads && gardenCoreAddress ? plotIds.map((pid)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getPlotCells', args: [accountForReads, pid], chainId })) : []
+  ), [accountForReads, gardenCoreAddress, chainId]);
   const { data: plotData, refetch: refetchPlots } = useReadContracts({ contracts: plotContracts, query: { enabled: !!address && !!gardenCoreAddress, refetchInterval: 4000 } });
   const plotCells = (plotData || []).map((entry) => {
     const arr = entry?.result || [];
@@ -229,6 +240,23 @@ export default function Game() {
     const ready = nowSec >= plantedAt + growDuration;
     return { status, seedType, plantedAt, growDuration, ready };
   }));
+  const sendFromSubAccount = async ({ to, data, value }) => {
+    if (!provider || !subAccountAddress) {
+      throw new Error('Sub Account not ready');
+    }
+    const paymasterUrl = process.env.NEXT_PUBLIC_PAYMASTER_URL;
+    const params = [{
+      version: "2.0",
+      atomicRequired: true,
+      chainId: chainHex,
+      from: subAccountAddress,
+      calls: [{ to, data, value: value ? `0x${BigInt(value).toString(16)}` : '0x0' }],
+      capabilities: paymasterUrl ? { paymasterUrl } : undefined,
+    }];
+    const callsId = await provider.request({ method: 'wallet_sendCalls', params });
+    return callsId;
+  };
+
   const handleCellClick = (plotIdx, cellId) => {
     if (!gardenCoreAddress) return;
     const packed = plotCells[plotIdx] ? plotCells[plotIdx][cellId] : 0n;
@@ -239,12 +267,8 @@ export default function Game() {
     if (isOccupied && info && info.ready) {
       setHarvestingCell({ plotIdx, cellId });
       showLoading('Harvesting your crop...');
-      writeContractAsync({
-        address: gardenCoreAddress,
-        abi: gardenCoreAbi,
-        functionName: 'harvest',
-        args: [plotIdx, cellId],
-      }).then(()=>{
+      const data = encodeFunctionData({ abi: gardenCoreAbi, functionName: 'harvest', args: [plotIdx, cellId] });
+      sendFromSubAccount({ to: gardenCoreAddress, data }).then(()=>{
         refetchPlots?.();
         showSuccess('Crop harvested successfully!');
         setTimeout(()=> setHarvestingCell(null), 800);
@@ -274,12 +298,8 @@ export default function Game() {
     setPlantingCell({ plotIdx, cellId });
     const seedName = seedList.find(s => s.type === selectedSeedType)?.name || 'seed';
     showLoading(`Planting ${seedName}...`);
-    writeContractAsync({
-      address: gardenCoreAddress,
-      abi: gardenCoreAbi,
-      functionName: 'plant',
-      args: [plotIdx, cellId, selectedSeedType],
-    }).then(()=>{
+    const data = encodeFunctionData({ abi: gardenCoreAbi, functionName: 'plant', args: [plotIdx, cellId, selectedSeedType] });
+    sendFromSubAccount({ to: gardenCoreAddress, data }).then(()=>{
       refetchPlots?.();
       showSuccess(`${seedName} planted successfully!`);
       setTimeout(()=> setPlantingCell(null), 1200);
@@ -301,32 +321,86 @@ export default function Game() {
         showError('This seed is not available');
         return;
       }
-      // call buySeeds with exact msg.value from on-chain price
+      // call buySeeds with exact msg.value from on-chain price via sub account
       const value = (seed.buyPriceWei || 0n) * BigInt(qty);
       showLoading(`Buying ${qty} ${seed.name} seeds...`);
-      writeContractAsync({
-        address: gardenCoreAddress,
-        abi: gardenCoreAbi,
-        functionName: 'buySeeds',
-        args: [seedType, BigInt(qty)],
-        value,
-        chainId,
-      }).then(()=>{
-        setMarketOpen(false);
-        showSuccess('Seeds purchased successfully!');
-      }).catch((error) => {
-        console.error('Purchase failed:', error);
-        showError('Transaction failed. Please try again.');
-      });
+      const data = encodeFunctionData({ abi: gardenCoreAbi, functionName: 'buySeeds', args: [seedType, BigInt(qty)] });
+      (async () => {
+        try {
+          // Re-attach sub account for this session to ensure spend permissions can apply
+          if (provider) {
+            try { await provider.request({ method: 'wallet_addSubAccount', params: [{ account: { type: 'create' } }] }); } catch {}
+          }
+          await sendFromSubAccount({ to: gardenCoreAddress, data, value });
+          setMarketOpen(false);
+          showSuccess('Seeds purchased successfully!');
+        } catch (error) {
+          console.error('Purchase failed:', error);
+          showError('Transaction failed. Please try again.');
+        }
+      })();
     };
     window.addEventListener('seed:buy', handler);
     return () => window.removeEventListener('seed:buy', handler);
-  }, [gardenCoreAddress, seedList, writeContractAsync]);
+  }, [gardenCoreAddress, seedList, provider, subAccountAddress]);
 
   useEffect(() => {
     // ensure we only consider client-side after mount to avoid SSR mismatch
     setMounted(true);
   }, []);
+
+  // Initialize Base Account SDK provider and ensure a Sub Account exists
+  useEffect(() => {
+    if (!mounted || !isConnected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const sdk = createBaseAccountSDK({
+          appName: 'BaseGarden',
+          appLogoUrl: 'https://base.org/logo.png',
+          appChainIds: [isSepolia ? baseSepolia.id : base.id],
+          subAccounts: {
+            creation: 'on-connect',
+            defaultAccount: 'sub',
+          },
+        });
+        const prov = sdk.getProvider();
+        if (cancelled) return;
+        setProvider(prov);
+
+        // Ensure a wallet session is established (triggers Base Account connect flow)
+        try { await prov.request({ method: 'wallet_connect', params: [] }); } catch {}
+        const accounts = await prov.request({ method: 'eth_requestAccounts', params: [] });
+        if (cancelled) return;
+        // With defaultAccount: 'sub', order is [sub, universal]
+        const sub = accounts[0];
+        const universal = accounts[1] || accounts[0];
+        setUniversalAddress(universal);
+
+        // Attach (and create if needed) a sub account for this session.
+        // Calling with type 'create' will NOT create a new one if it already exists for this domain; it will attach it for this session.
+        const added = await prov.request({
+          method: 'wallet_addSubAccount',
+          params: [{ account: { type: 'create' } }],
+        });
+        if (cancelled) return;
+        if (added?.address) {
+          setSubAccountAddress(added.address);
+          return;
+        }
+        // Fallback: query existing if no address returned
+        const res = await prov.request({
+          method: 'wallet_getSubAccounts',
+          params: [{ account: universal, domain: window.location.origin }],
+        });
+        const existing = res?.subAccounts?.[0]?.address;
+        if (existing) setSubAccountAddress(existing);
+      } catch (e) {
+        console.error('[SubAccounts] init failed', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mounted, isConnected, isSepolia]);
 
   // Remove redirect logic - let the connect gate handle it
 
@@ -490,10 +564,28 @@ export default function Game() {
           </Canvas>
         </div>
         
-        {/* Controls hint */}
-        <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-2 rounded">
-          <p className="text-sm">WASD: Move | Q/E: Turn</p>
-        </div>
+        {/* Sub account display + Disconnect */}
+        {subAccountAddress ? (
+          <div className="absolute bottom-16 left-4 bg-black/60 text-white px-3 py-2 rounded shadow">
+            <p className="text-xs">Sub Account</p>
+            <p className="text-xs font-mono opacity-90">{subAccountAddress}</p>
+          </div>
+        ) : null}
+        {/* Disconnect button (replaces controls hint) */}
+        <button
+          className="absolute bottom-4 left-4 bg-black/70 text-white px-4 py-2 rounded shadow hover:bg-black/80"
+          onClick={async()=>{
+            try {
+              if (provider) {
+                try { await provider.request({ method: 'wallet_disconnect', params: [] }); } catch {}
+              }
+            } finally {
+              try { disconnect?.(); } catch {}
+            }
+          }}
+        >
+          Disconnect
+        </button>
 
         {/* Seed shop proximity hint */}
         <ProximityHint visible={nearSeedShop && !marketOpen} text="Press P to open Seed Shop" />
@@ -502,17 +594,13 @@ export default function Game() {
         {/* Seed marketplace modal */}
         <SeedMarketplace open={marketOpen} onClose={()=>setMarketOpen(false)} seeds={seedList} />
         {/* Crop shop modal */}
-        <CropShop open={cropShopOpen} onClose={()=>setCropShopOpen(false)} gardenCoreAddress={gardenCoreAddress} items1155Address={items1155Address} />
+        <CropShop open={cropShopOpen} onClose={()=>setCropShopOpen(false)} gardenCoreAddress={gardenCoreAddress} items1155Address={items1155Address} accountAddress={accountForReads} provider={provider} subAccountAddress={subAccountAddress} chainHex={chainHex} />
 
         {/* HUD */}
-        <HUD gardenTokenAddress={gardenTokenAddress} />
+        <HUD gardenTokenAddress={gardenTokenAddress} accountAddress={accountForReads} />
 
         {/* Inventory Sidebar */}
-        <InventorySidebar items1155Address={items1155Address} selectedSeedType={selectedSeedType} onSelectSeed={setSelectedSeedType} seeds={[
-          { type:1, name:'Carrot', growDuration:60, seedTokenId:1001, cropTokenId:2001 },
-          { type:2, name:'Mint', growDuration:10, seedTokenId:1002, cropTokenId:2002 },
-          { type:3, name:'Sage', growDuration:20, seedTokenId:1003, cropTokenId:2003 },
-        ]} />
+        <InventorySidebar items1155Address={items1155Address} selectedSeedType={selectedSeedType} onSelectSeed={setSelectedSeedType} accountAddress={accountForReads} seeds={seedList} />
       </main>
     </div>
   );

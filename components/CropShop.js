@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { useAccount, useReadContracts, useWriteContract } from "wagmi";
+import { useReadContracts } from "wagmi";
 import { gardenCoreAbi, items1155Abi } from "../lib/abi";
 import { useNotificationActions } from "./NotificationSystem";
+import { encodeFunctionData } from "viem";
 
-export default function CropShop({ open, onClose, gardenCoreAddress, items1155Address, seedTypes = [1,2,3] }) {
-  const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+export default function CropShop({ open, onClose, gardenCoreAddress, items1155Address, seedTypes = [1,2,3], accountAddress, provider, subAccountAddress, chainHex }) {
   const { showLoading, showSuccess, showError } = useNotificationActions();
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
   const [selected, setSelected] = useState(null);
@@ -16,8 +15,8 @@ export default function CropShop({ open, onClose, gardenCoreAddress, items1155Ad
   const cfgContracts = (gardenCoreAddress ? seedTypes.map((t)=> ({ address: gardenCoreAddress, abi: gardenCoreAbi, functionName: 'getSeedConfig', args: [t], chainId })) : []);
   const { data: cfgData } = useReadContracts({ contracts: cfgContracts, query: { enabled: !!gardenCoreAddress } });
   const cropTokenIds = (cfgData || []).map((d)=> Number(d?.result?.cropTokenId || 0));
-  const balContracts = (address && items1155Address ? cropTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [address, BigInt(id)], chainId })) : []);
-  const { data: balData } = useReadContracts({ contracts: balContracts, query: { enabled: !!address && !!items1155Address && balContracts.length>0, refetchInterval: 4000 } });
+  const balContracts = (accountAddress && items1155Address ? cropTokenIds.filter(id=>id>0).map((id)=> ({ address: items1155Address, abi: items1155Abi, functionName: 'balanceOf', args: [accountAddress, BigInt(id)], chainId })) : []);
+  const { data: balData } = useReadContracts({ contracts: balContracts, query: { enabled: !!accountAddress && !!items1155Address && balContracts.length>0, refetchInterval: 4000 } });
 
   const items = seedTypes.map((t, i) => {
     const d = cfgData && cfgData[i] ? cfgData[i].result : undefined;
@@ -69,12 +68,17 @@ export default function CropShop({ open, onClose, gardenCoreAddress, items1155Ad
                 setSubmitting(true);
                 showLoading(`Selling ${qty} ${selected.name} crops...`);
                 console.debug('[CropShop] sell click', { seedType: selected.type, qty });
-                await writeContractAsync({
-                  address: gardenCoreAddress,
-                  abi: gardenCoreAbi,
-                  functionName: 'sellCrops',
-                  args: [selected.type, BigInt(qty)],
-                  chainId,
+                if (!provider || !subAccountAddress) throw new Error('Sub Account not ready');
+                const data = encodeFunctionData({ abi: gardenCoreAbi, functionName: 'sellCrops', args: [selected.type, BigInt(qty)] });
+                await provider.request({
+                  method: 'wallet_sendCalls',
+                  params: [{
+                    version: '2.0',
+                    atomicRequired: true,
+                    chainId: chainHex,
+                    from: subAccountAddress,
+                    calls: [{ to: gardenCoreAddress, data, value: '0x0' }],
+                  }],
                 });
                 showSuccess(`${qty} ${selected.name} crops sold successfully!`);
                 onClose?.();

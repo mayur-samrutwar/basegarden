@@ -16,6 +16,7 @@
     "deploy:base-sepolia": "hardhat run scripts/deploy.js --network base_sepolia"
   },
   "dependencies": {
+    "@base-org/account": "^2.4.0",
     "@coinbase/onchainkit": "^1.1.1",
     "@openzeppelin/contracts": "^5.0.2",
     "@react-three/drei": "^10.7.6",

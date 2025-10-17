@@ -1,25 +1,24 @@
-import { useAccount, useBalance, useReadContract } from "wagmi";
+import { useBalance, useReadContract } from "wagmi";
 import { erc20Abi } from "../lib/abi";
 
-export default function HUD({ gardenTokenAddress }) {
-  const { address } = useAccount();
+export default function HUD({ gardenTokenAddress, accountAddress }) {
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '84532', 10);
-  const { data: ethBal } = useBalance({ address, chainId, watch: true });
+  const { data: ethBal } = useBalance({ address: accountAddress, chainId, watch: true });
 
   const { data: gardenBal } = useReadContract({
     address: gardenTokenAddress,
     abi: erc20Abi,
     functionName: "balanceOf",
-    args: address ? [address] : undefined,
+    args: accountAddress ? [accountAddress] : undefined,
     chainId,
-    query: { enabled: !!address && !!gardenTokenAddress, refetchInterval: 3000 },
+    query: { enabled: !!accountAddress && !!gardenTokenAddress, refetchInterval: 3000 },
   });
 
   const ethDisplay = ethBal ? Number(ethBal.formatted).toFixed(2) : "0.00";
   const gardenDisplay = gardenBal ? (Number(gardenBal) / 1e18).toFixed(4) : "0.0000";
 
   if (typeof window !== 'undefined') {
-    console.debug('[HUD] chainId', chainId, 'address', address);
+    console.debug('[HUD] chainId', chainId, 'address', accountAddress);
     console.debug('[HUD] ETH balance raw', ethBal);
     console.debug('[HUD] Garden token addr', gardenTokenAddress, 'balance raw', gardenBal);
   }
