@@ -13,14 +13,13 @@ export default function App({ Component, pageProps }) {
   const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
 
   const config = createConfig({
-    chains: [base, baseSepolia],
+    chains: [baseSepolia],
     connectors: [
       coinbaseWallet({ appName: 'BaseGarden' }),
       metaMask(),
       walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo' }),
     ],
     transports: {
-      [base.id]: http(),
       [baseSepolia.id]: http(rpcUrl),
     },
     autoConnect: true,

@@ -378,10 +378,25 @@ export default function Game() {
         try { await prov.request({ method: 'wallet_connect', params: [] }); } catch {}
         const accounts = await prov.request({ method: 'eth_requestAccounts', params: [] });
         if (cancelled) return;
-        // With defaultAccount: 'sub', order is [sub, universal]
-        const sub = accounts[0];
-        const universal = accounts[1] || accounts[0];
-        setUniversalAddress(universal);
+        // Detect universal/sub robustly via wallet_getSubAccounts (order may vary)
+        let detectedUniversal = accounts[0];
+        let detectedSub = '';
+        try {
+          const res0 = await prov.request({ method: 'wallet_getSubAccounts', params: [{ account: accounts[0], domain: window.location.origin }] });
+          const sub0 = res0?.subAccounts?.[0]?.address;
+          if (sub0) {
+            detectedUniversal = accounts[0];
+            detectedSub = sub0;
+          } else if (accounts[1]) {
+            const res1 = await prov.request({ method: 'wallet_getSubAccounts', params: [{ account: accounts[1], domain: window.location.origin }] });
+            const sub1 = res1?.subAccounts?.[0]?.address;
+            if (sub1) {
+              detectedUniversal = accounts[1];
+              detectedSub = sub1;
+            }
+          }
+        } catch {}
+        setUniversalAddress(detectedUniversal);
 
         // Attach (and create if needed) a sub account for this session.
         // Calling with type 'create' will NOT create a new one if it already exists for this domain; it will attach it for this session.
@@ -390,10 +405,8 @@ export default function Game() {
           params: [{ account: { type: 'create' } }],
         });
         if (cancelled) return;
-        if (added?.address) {
-          setSubAccountAddress(added.address);
-          return;
-        }
+        if (added?.address) detectedSub = added.address || detectedSub;
+        if (detectedSub) { setSubAccountAddress(detectedSub); return; }
         // Fallback: query existing if no address returned
         const res = await prov.request({
           method: 'wallet_getSubAccounts',
