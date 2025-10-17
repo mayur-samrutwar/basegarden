@@ -331,6 +331,12 @@ export default function Game() {
           if (provider) {
             try { await provider.request({ method: 'wallet_addSubAccount', params: [{ account: { type: 'create' } }] }); } catch {}
           }
+          // Debug balances before send
+          try {
+            const subBalHex = await provider?.request({ method: 'eth_getBalance', params: [subAccountAddress, 'latest'] });
+            const uniBalHex = await provider?.request({ method: 'eth_getBalance', params: [universalAddress, 'latest'] });
+            console.debug('[BuySeeds] balances', { sub: subAccountAddress, subBalHex, universal: universalAddress, uniBalHex, valueHex: `0x${value.toString(16)}`, chainHex });
+          } catch {}
           await sendFromSubAccount({ to: gardenCoreAddress, data, value });
           setMarketOpen(false);
           showSuccess('Seeds purchased successfully!');
